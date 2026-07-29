@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-paper font-body text-ink antialiased;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+
+  h1 {
+    @apply font-display text-2xl font-semibold tracking-[-0.015em] text-ink;
+  }
+
+  h2 {
+    @apply font-display text-lg font-semibold tracking-[-0.01em] text-ink;
+  }
+
+  /* One consistent focus ring across the whole app. */
+  :focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-jade;
+  }
+}
+
+@layer components {
+  /* ---- Folder tab: the signature -------------------------------------
+     Each page's section label sits on a tab attached to the sheet below
+     it, the way a section divider sticks out of a paper patient file. */
+  .file-tab {
+    @apply -mb-px inline-flex items-center gap-2 rounded-t-lg border border-line
+           border-b-transparent bg-white px-4 py-2 font-mono text-[11px]
+           uppercase tracking-[0.16em] text-ink-soft;
+  }
+
+  .file-sheet {
+    @apply rounded-lg rounded-tl-none border border-line bg-white;
+  }
+
+  /* ---- Data type ----
+     Codes, counts, and dates are records, so they're set in mono. */
+  .data {
+    @apply font-mono tabular-nums;
+  }
+
+  .chip {
+    @apply inline-flex items-center rounded border px-1.5 py-0.5 font-mono
+           text-[10px] uppercase tracking-[0.14em];
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,37 @@
+const express = require("express");
+const cors = require("cors");
+const { notFound, errorHandler } = require("./middleware/errorHandler");
+
+const authRoutes = require("./routes/authRoutes");
+const { publicRouter: clinicsPublic, myRouter: clinicMine } = require("./routes/clinicRoutes");
+const vetRoutes = require("./routes/vetRoutes");
+const petRoutes = require("./routes/petRoutes");
+const recordRoutes = require("./routes/recordRoutes");
+const searchRoutes = require("./routes/searchRoutes");
+const ownerRoutes = require("./routes/ownerRoutes");
+
+const app = express();
+
+app.use(
+  cors({
+    origin: process.env.CLIENT_ORIGIN || "http://localhost:3000",
+    credentials: true
+  })
+);
+app.use(express.json({ limit: "1mb" }));
+
+app.get("/api/health", (req, res) => res.json({ ok: true }));
+
+app.use("/api/auth", authRoutes);
+app.use("/api/clinics", clinicsPublic); // public: sign-up dropdown
+app.use("/api/clinic", clinicMine);     // scoped: the caller's own clinic
+app.use("/api/vets", vetRoutes);        // admin only
+app.use("/api/owners", ownerRoutes);    // [vet, admin] owner picker
+app.use("/api/pets", petRoutes);        // pets + their record timeline
+app.use("/api/records", recordRoutes);  // edit/delete a single record
+app.use("/api/search", searchRoutes);   // name, owner, or pet code
+
+app.use(notFound);
+app.use(errorHandler);
+
+module.exports = app;
