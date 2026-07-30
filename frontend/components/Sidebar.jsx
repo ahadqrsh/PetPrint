@@ -48,6 +48,15 @@ export default function Sidebar({ clinic, onNavigate }) {
   if (!user) return null;
   const sections = sectionsForRole(user.role);
 
+  // Longest matching href wins, so /adoptions/applications highlights itself
+  // rather than /adoptions, and /pets/new still highlights /pets.
+  const activeHref = sections
+    .flatMap((s) => s.items)
+    .filter((i) => !i.soon)
+    .map((i) => i.href)
+    .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
+    .sort((a, b) => b.length - a.length)[0];
+
   return (
     <div className="flex h-full flex-col bg-petrol">
       <div className="px-5 pb-4 pt-5">
@@ -94,7 +103,7 @@ export default function Sidebar({ clinic, onNavigate }) {
                 <NavItem
                   key={item.label}
                   item={item}
-                  active={pathname === item.href}
+                  active={item.href === activeHref}
                   onNavigate={onNavigate}
                 />
               ))}
@@ -116,7 +125,7 @@ export default function Sidebar({ clinic, onNavigate }) {
         <button
           onClick={() => {
             logout();
-            router.push("/login");
+            router.replace("/login");
           }}
           className="mt-2.5 w-full rounded-md border border-petrol-lift px-3 py-1.5 text-[13px] text-white/60 transition-colors hover:bg-petrol-light hover:text-white"
         >

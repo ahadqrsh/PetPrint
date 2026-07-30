@@ -9,6 +9,8 @@ const User = require("../src/models/User");
 const Pet = require("../src/models/Pet");
 const MedicalRecord = require("../src/models/MedicalRecord");
 const Counter = require("../src/models/Counter");
+const AdoptionListing = require("../src/models/AdoptionListing");
+const AdoptionApplication = require("../src/models/AdoptionApplication");
 const { generatePetCode } = require("../src/utils/generatePetCode");
 
 const PASSWORD = "password123"; // dev only
@@ -100,7 +102,54 @@ async function seedPet({ owner, clinic, vet, pet, visits }) {
     ]
   }));
 
-  console.log(`\nSeeded ${pets.length} pets across 2 clinics. All accounts use password: ${PASSWORD}\n`);
+  // ---- Adoption listings -------------------------------------------------
+  // No images: uploads belong to a real request, so these start photo-less and
+  // exercise the placeholder path. Add photos through the UI.
+  await AdoptionApplication.deleteMany({});
+  await AdoptionListing.deleteMany({});
+
+  const listings = await AdoptionListing.insertMany([
+    {
+      name: "Pepper", species: "dog", breed: "Lurcher cross",
+      description:
+        "Six-year-old lurcher, came in as a stray in March. Calm indoors, walks well on a lead, and would rather sleep on a sofa than chase anything. Fine with other dogs; untested with cats. Best suited to a quiet home.",
+      status: "available", postedByVetId: vetA._id, clinicId: ngo._id
+    },
+    {
+      name: "Clementine", species: "cat", breed: "Domestic Shorthair",
+      description:
+        "Two years old, spayed, fully vaccinated. Shy for the first week and then extremely affectionate. Litter trained. Would do well as the only cat in the house.",
+      status: "available", postedByVetId: vetA2._id, clinicId: ngo._id
+    },
+    {
+      name: "Rooster", species: "dog", breed: "Jack Russell Terrier",
+      description:
+        "Eight-year-old terrier with plenty of opinions and a bad knee. Needs an adult-only home and short walks. Fully house trained.",
+      status: "available", postedByVetId: vetA._id, clinicId: ngo._id
+    },
+    {
+      name: "Sable", species: "cat", breed: "Tabby",
+      description:
+        "Found in a barn with three kittens, all now homed. Sable is independent, good with children, and an excellent mouser.",
+      status: "available", postedByVetId: vetB._id, clinicId: priv._id
+    }
+  ]);
+
+  // One listing already has an application, so the review queue isn't empty
+  // and the pending status is visible on first load.
+  const pepper = listings.find((l) => l.name === "Pepper");
+  await AdoptionApplication.create({
+    listingId: pepper._id,
+    applicantId: ownerA._id,
+    clinicId: ngo._id,
+    message:
+      "We have a quiet house with a big garden and no other pets. I work from home four days a week, so Pepper wouldn't be left alone for long. We had a lurcher before and know the breed well.",
+    status: "applied"
+  });
+  pepper.status = "pending";
+  await pepper.save();
+
+  console.log(`\nSeeded ${pets.length} pets and ${listings.length} adoption listings across 2 clinics. All accounts use password: ${PASSWORD}\n`);
   console.table([
     { email: "admin@ngo.test", role: "admin", clinic: "Paws & Whiskers" },
     { email: "vet@ngo.test", role: "vet", clinic: "Paws & Whiskers" },
@@ -110,7 +159,8 @@ async function seedPet({ owner, clinic, vet, pet, visits }) {
     { email: "vet@private.test", role: "vet", clinic: "Northside" },
     { email: "owner@private.test", role: "owner", clinic: "Northside" }
   ]);
-  console.log("\nPet codes:", pets.map((p) => `${p.name} ${p.petCode}`).join(" · "), "\n");
+  console.log("\nPet codes:", pets.map((p) => `${p.name} ${p.petCode}`).join(" · "));
+  console.log("Adoption: 3 listings at Paws & Whiskers (Pepper has 1 application), 1 at Northside\n");
   process.exit(0);
 })().catch((e) => {
   console.error(e);

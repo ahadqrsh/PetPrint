@@ -7,8 +7,16 @@ export const NAV_SECTIONS = [
     items: [
       { href: "/dashboard", label: "Overview", roles: ["admin", "vet", "owner"] },
       { href: "/pets", label: "Pets", roles: ["admin", "vet"] },
-      { href: "/pets", label: "My pets", roles: ["owner"] },
-      { href: "/adoptions", label: "Adoptions", roles: ["admin", "vet", "owner"], soon: "Phase 4" }
+      { href: "/pets", label: "My pets", roles: ["owner"] }
+    ]
+  },
+  {
+    label: "Adoption",
+    items: [
+      { href: "/adoptions", label: "Listings", roles: ["admin", "vet"] },
+      { href: "/adoptions", label: "Looking for a home", roles: ["owner"] },
+      { href: "/adoptions/applications", label: "Review queue", roles: ["admin", "vet"] },
+      { href: "/adoptions/applications", label: "My applications", roles: ["owner"] }
     ]
   },
   {

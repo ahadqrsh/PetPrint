@@ -21,7 +21,7 @@ export default function LoginPage() {
     setBusy(true);
     try {
       await login(form.email, form.password);
-      router.push("/dashboard");
+      router.replace("/dashboard");
     } catch (err) {
       setError(apiError(err));
       setBusy(false);

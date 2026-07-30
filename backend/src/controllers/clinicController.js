@@ -2,6 +2,8 @@ const Clinic = require("../models/Clinic");
 const User = require("../models/User");
 const Pet = require("../models/Pet");
 const MedicalRecord = require("../models/MedicalRecord");
+const AdoptionListing = require("../models/AdoptionListing");
+const AdoptionApplication = require("../models/AdoptionApplication");
 const { ApiError } = require("../middleware/errorHandler");
 const { clinicFilter, scopedFilter, stripProtected } = require("../utils/scope");
 
@@ -25,7 +27,13 @@ async function getMyClinic(req, res, next) {
     const weekAgo = new Date(Date.now() - 7 * 864e5);
     const petScope = scopedFilter(req.user);
 
-    const [admins, vets, owners, pets, visitsThisWeek] = await Promise.all([
+    // Adoption figures follow the same rule: staff see the clinic's queue,
+    // an owner sees only the applications they sent.
+    const applicationFilter = { ...clinicFilter(req.user), status: "applied" };
+    if (req.user.role === "owner") applicationFilter.applicantId = req.user._id;
+
+    const [admins, vets, owners, pets, visitsThisWeek, adoptable, openApplications] =
+      await Promise.all([
       User.countDocuments({ ...clinicFilter(req.user), role: "admin" }),
       User.countDocuments({ ...clinicFilter(req.user), role: "vet" }),
       User.countDocuments({ ...clinicFilter(req.user), role: "owner" }),
@@ -41,7 +49,12 @@ async function getMyClinic(req, res, next) {
         : MedicalRecord.countDocuments({
             ...clinicFilter(req.user),
             visitDate: { $gte: weekAgo }
-          })
+          }),
+      AdoptionListing.countDocuments({
+        ...clinicFilter(req.user),
+        status: { $in: ["available", "pending"] }
+      }),
+      AdoptionApplication.countDocuments(applicationFilter)
     ]);
 
     res.json({
@@ -54,7 +67,7 @@ async function getMyClinic(req, res, next) {
         phone: clinic.phone,
         createdAt: clinic.createdAt
       },
-      counts: { pets, visitsThisWeek },
+      counts: { pets, visitsThisWeek, adoptable, openApplications },
       // Owners get the clinic card but not a roster of who else is registered.
       team: req.user.role === "owner" ? null : { admins, vets, owners }
     });

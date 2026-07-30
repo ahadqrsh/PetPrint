@@ -1,4 +1,5 @@
 import ChartPreview from "@/components/ChartPreview";
+import GuestOnly from "@/components/GuestOnly";
 
 export default function AuthLayout({ children }) {
   return (
@@ -26,7 +27,9 @@ export default function AuthLayout({ children }) {
       </section>
 
       <section className="flex min-h-screen items-center justify-center px-5 py-10">
-        <div className="w-full max-w-form">{children}</div>
+        <div className="w-full max-w-form">
+          <GuestOnly>{children}</GuestOnly>
+        </div>
       </section>
     </div>
   );

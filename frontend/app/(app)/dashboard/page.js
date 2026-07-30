@@ -15,19 +15,19 @@ function LedgerStrip({ counts, team, isStaff, loading }) {
     ? [
         { label: "Pets on file", value: counts?.pets },
         { label: "Visits this week", value: counts?.visitsThisWeek },
-        { label: "Vets", value: team?.vets },
-        { label: "Registered owners", value: team?.owners }
+        { label: "Up for adoption", value: counts?.adoptable },
+        { label: "Applications to review", value: counts?.openApplications }
       ]
     : [
         { label: "My pets", value: counts?.pets },
-        { label: "Visits this week", value: counts?.visitsThisWeek }
+        { label: "Visits this week", value: counts?.visitsThisWeek },
+        { label: "Looking for a home", value: counts?.adoptable },
+        { label: "My open applications", value: counts?.openApplications }
       ];
 
   return (
     <div
-      className={`grid divide-x divide-line border-t border-line ${
-        cells.length === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2"
-      }`}
+      className="grid grid-cols-2 divide-line border-t border-line sm:grid-cols-4 sm:divide-x"
     >
       {cells.map((cell) => (
         <div key={cell.label} className="px-5 py-4 sm:px-6">
@@ -51,13 +51,13 @@ function NextUp({ role }) {
   const rows =
     role === "owner"
       ? [
-          { phase: "Phase 4", text: "Browse cats and dogs up for adoption, and apply" },
-          { phase: "Phase 5", text: "Printable PDF summaries of your pet's history" }
+          { phase: "Phase 5", text: "Printable PDF summaries of your pet's history" },
+          { phase: "Phase 6", text: "Vaccination reminders when a booster is due" }
         ]
       : [
-          { phase: "Phase 4", text: "Adoption listings and the application review queue" },
           { phase: "Phase 5", text: "PDF visit summaries, CSV export, and email notifications" },
-          { phase: "Phase 6", text: "Vaccination scheduling with automatic due dates" }
+          { phase: "Phase 6", text: "Vaccination scheduling with automatic due dates" },
+          { phase: "Phase 7", text: "AI drafting help for clinical notes (vet-approved)" }
         ];
 
   return (
@@ -201,6 +201,12 @@ export default function DashboardPage() {
                 className="rounded-md bg-jade px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-jade-deep"
               >
                 Register a pet
+              </Link>
+              <Link
+                href="/adoptions"
+                className="rounded-md border border-line-strong bg-white px-3 py-1.5 text-[13px] font-semibold text-ink hover:bg-paper"
+              >
+                {isStaff ? "Adoption listings" : "Adopt a pet"}
               </Link>
               {user.role === "admin" && (
                 <Link

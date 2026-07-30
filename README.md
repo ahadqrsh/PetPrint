@@ -24,7 +24,13 @@ Pet CRUD with server-generated `petCode`, the medical-record timeline newest
 first, the allergy banner, a QR code per pet with a `/scan/:petCode` landing
 page, and search across pet name, owner name, and code. 20 unit tests.
 
-Phases 4–7 (adoption, polish, vaccination engine, AI assistant) are not started.
+**Phase 4 — Adoption ✅**
+Listings with Multer image upload to Cloudinary (local disk as fallback), the
+browse grid for owners, and the apply → approve/reject workflow that drives
+listing status. Approving one application marks the animal adopted and turns
+down everyone else waiting on it. 27 unit tests.
+
+Phases 5–7 (polish, vaccination engine, AI assistant) are not started.
 
 ## Run it
 
@@ -34,9 +40,10 @@ Prereqs: Node 18+, a MongoDB instance (local or Atlas).
 cd backend
 cp .env.example .env        # fill in MONGODB_URI and JWT_SECRET
 npm install
-npm run seed                # two clinics, staffed, for testing isolation
-npm test                    # tenant-scoping unit tests
+npm run seed                # two clinics, staffed, with pets and histories
+npm test                    # unit tests, no database needed
 npm run dev                 # http://localhost:5000
+npm run verify              # end-to-end API checks (needs the server running)
 ```
 
 ```bash
@@ -96,7 +103,35 @@ PUT    /api/records/:id             # [vet, admin]
 DELETE /api/records/:id             # [admin]
 
 GET    /api/search?q=               # pet name, owner name, or pet code — all scoped
+
+GET    /api/adoptions               # ?status= ?species= — owners see open listings only
+GET    /api/adoptions/:id
+POST   /api/adoptions               # [vet, admin] multipart, image in an "image" field
+PUT    /api/adoptions/:id           # [vet, admin] multipart; a new image replaces the old
+DELETE /api/adoptions/:id           # [vet, admin] — also deletes its applications
+POST   /api/adoptions/:id/apply     # [owner]
+
+GET    /api/adoptions/applications  # staff: the clinic's queue; owner: their own
+PUT    /api/adoptions/applications/:id      # [vet, admin] approved | rejected
+DELETE /api/adoptions/applications/:id      # [owner] withdraw an undecided application
 ```
+
+### Listing status is derived, never set by hand
+
+`nextListingStatus()` in `src/utils/adoptionStatus.js` computes it from the
+applications: an approved one makes the listing **adopted**, any open one makes
+it **pending**, otherwise **available**. Adopted is terminal, so withdrawing or
+rejecting a leftover application can't put an animal that has gone home back on
+the board.
+
+### Image uploads
+
+Multer parses the multipart body into memory; `uploadService.storeImage()` then
+pushes it to Cloudinary if the three `CLOUDINARY_*` variables are set, and
+otherwise writes it to `backend/uploads/` which Express serves at `/uploads`.
+Either way only the URL reaches MongoDB. Set `API_PUBLIC_URL` when using the
+disk fallback so stored URLs are absolute. Limits: 5 MB, one file, JPEG/PNG/
+WebP/GIF only.
 
 ### Pet codes
 
@@ -165,24 +200,41 @@ Direction is **"petrol & brass"** — the paper patient file, digitised.
 - **The dashboard counts pets and visits-this-week** via `/api/clinic`. That's
   a slice of what Phase 5's `/dashboard/stats` will do — fold it in there when
   you get to it rather than keeping two sources.
+- **Signed-in users can no longer reach `/login` or `/register`.** A `GuestOnly`
+  guard wraps the auth layout and redirects them to the dashboard, and both auth
+  pages now navigate with `replace()` so Back doesn't bounce between the two.
+- **Staff can't apply to their own listings** (403). If a vet should be able to
+  adopt from their own clinic, they'd need a separate owner account — worth
+  deciding before this goes live.
 - Admins can't be created or removed through `/api/vets` — that endpoint only
   touches `role: "vet"`. Worth deciding in Phase 3 whether admins need their own
   management screen.
 - JWT is in localStorage with an axios interceptor. Fine for development; say
   the word if you want httpOnly cookies before this goes anywhere real.
 
-## Upgrading from Phase 2
+## Testing
 
-**Nothing was deleted this phase** — Phase 3 only adds and edits files, so
-extracting over your existing folder is safe. Extracting into a *fresh* folder
-is still the cleaner habit.
+```bash
+npm test              # 27 unit tests, no database needed
+npm run verify        # both API suites end to end (needs the server running)
+npm run verify:3      # Phase 3 only — 45 checks
+npm run verify:4      # Phase 4 only — 44 checks
+```
 
-Changed files: `backend/src/app.js`, `backend/src/controllers/clinicController.js`,
-`backend/scripts/seed.js`, `backend/package.json` (adds `qrcode`),
-`backend/.env.example`, `frontend/components/nav-items.js`,
-`frontend/app/(app)/dashboard/page.js`, `frontend/jsconfig.json`, and every file
-carrying the old project name.
+`PHASE-3-TESTING.md` and `PHASE-4-TESTING.md` add the UI walkthroughs, for the
+things a script can't judge.
 
-After extracting, run `npm install` in `backend/` (the new `qrcode` dependency)
-and `npm run seed` to get pets with histories on file.
-"# PetPrint" 
+## Upgrading from Phase 3
+
+**Nothing was deleted this phase.** Extracting over your existing folder is
+safe, though a fresh folder is still the cleaner habit.
+
+Changed: `backend/src/app.js`, `backend/src/controllers/clinicController.js`,
+`backend/scripts/seed.js`, `backend/package.json` (adds `multer` and
+`cloudinary`), `backend/.env.example` (adds `API_PUBLIC_URL`),
+`frontend/components/nav-items.js`, `frontend/components/Sidebar.jsx`,
+`frontend/app/(app)/dashboard/page.js`, `frontend/app/(auth)/layout.js`, and
+both auth pages.
+
+After extracting: `npm install` in **both** folders, then `npm run seed` — the
+seed now also creates adoption listings and one pending application.

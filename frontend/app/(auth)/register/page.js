@@ -51,7 +51,7 @@ export default function RegisterPage() {
           }
         });
       }
-      router.push("/dashboard");
+      router.replace("/dashboard");
     } catch (err) {
       setError(apiError(err));
       setBusy(false);
