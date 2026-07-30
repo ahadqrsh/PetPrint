@@ -3,6 +3,8 @@ const mongoose = require("mongoose");
 const User = require("../models/User");
 const { ApiError } = require("../middleware/errorHandler");
 const { clinicFilter, assertSameClinic, stripProtected } = require("../utils/scope");
+const Clinic = require("../models/Clinic");
+const email = require("../services/emailService");
 
 const SALT_ROUNDS = 10;
 
@@ -57,6 +59,9 @@ async function createVet(req, res, next) {
       clinicId: req.user.clinicId,
       phone: phone || ""
     });
+
+    const clinic = await Clinic.findById(req.user.clinicId).lean();
+    if (clinic) email.vetAccountCreated({ vet, clinic, temporaryPassword: true });
 
     res.status(201).json({ vet: vet.toSafeJSON() });
   } catch (err) {

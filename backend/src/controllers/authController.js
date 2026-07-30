@@ -4,6 +4,7 @@ const User = require("../models/User");
 const Clinic = require("../models/Clinic");
 const { ApiError } = require("../middleware/errorHandler");
 const { signAccessToken } = require("../utils/tokens");
+const email = require("../services/emailService");
 
 const SALT_ROUNDS = 10;
 
@@ -39,6 +40,9 @@ async function registerClinic(req, res, next) {
       throw err;
     }
 
+    // Fire-and-forget: a failing mail server must not fail a signup.
+    email.welcomeClinic({ user: adminDoc, clinic: clinicDoc });
+
     res.status(201).json({
       token: signAccessToken(adminDoc),
       user: adminDoc.toSafeJSON(),
@@ -71,6 +75,8 @@ async function register(req, res, next) {
       clinicId: clinic._id,
       phone: phone || ""
     });
+
+    email.welcomeOwner({ user, clinic });
 
     res.status(201).json({ token: signAccessToken(user), user: user.toSafeJSON() });
   } catch (err) {

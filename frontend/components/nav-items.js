@@ -23,7 +23,7 @@ export const NAV_SECTIONS = [
     label: "Clinic",
     items: [
       { href: "/admin/vets", label: "Team", roles: ["admin"] },
-      { href: "/clinic", label: "Clinic details", roles: ["admin"], soon: "Phase 5" }
+      { href: "/clinic", label: "Clinic details", roles: ["admin"] }
     ]
   }
 ];

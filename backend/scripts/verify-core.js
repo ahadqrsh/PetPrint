@@ -1,5 +1,5 @@
 /**
- * Phase 3 end-to-end verification.
+ * Phases 3 and 5 end-to-end verification (pets, records, exports, stats).
  *
  * Exercises every Phase 3 rule against a running server, including the ones the
  * UI won't let you break: forged clinic ids, cross-tenant reads, role limits.
@@ -78,7 +78,7 @@ async function login(email) {
 }
 
 (async () => {
-  console.log(`\nVerifying Phase 3 against ${BASE}\n${"─".repeat(52)}`);
+  console.log(`\nVerifying Phases 3 & 5 against ${BASE}\n${"─".repeat(52)}`);
 
   // ---- Reachability -------------------------------------------------------
   let health;
@@ -329,6 +329,70 @@ async function login(email) {
   const ownerListsOwners = await call("GET", "/owners", { token: owner.token });
   check("an owner can't list the clinic's owners", ownerListsOwners.status === 403);
 
+  // ---- 9b. Phase 5 exports and stats --------------------------------------
+  section("9b. Exports and dashboard stats (Phase 5)");
+
+  const pdf = await fetch(`${BASE}/pets/${biscuit.id}/record.pdf`, {
+    headers: { Authorization: `Bearer ${vet.token}` },
+    signal: AbortSignal.timeout(15000)
+  });
+  const pdfBytes = Buffer.from(await pdf.arrayBuffer());
+  check("the history PDF downloads", pdf.status === 200, `status ${pdf.status}`);
+  check("it is a real PDF", pdfBytes.subarray(0, 5).toString() === "%PDF-",
+    `starts with: ${pdfBytes.subarray(0, 8).toString()}`);
+  check("it is served as an attachment named after the pet code",
+    (pdf.headers.get("content-disposition") || "").includes(`${biscuit.petCode}-history.pdf`),
+    pdf.headers.get("content-disposition"));
+
+  const ownerPdf = await fetch(`${BASE}/pets/${biscuit.id}/record.pdf`, {
+    headers: { Authorization: `Bearer ${owner.token}` }
+  });
+  check("the pet's owner can download their own pet's PDF", ownerPdf.status === 200);
+
+  const crossPdf = await fetch(`${BASE}/pets/${biscuit.id}/record.pdf`, {
+    headers: { Authorization: `Bearer ${otherAdmin.token}` }
+  });
+  check("another clinic can't download the PDF", crossPdf.status === 404);
+
+  const csv = await fetch(`${BASE}/clinic/export.csv`, {
+    headers: { Authorization: `Bearer ${admin.token}` }
+  });
+  const csvText = await csv.text();
+  check("an admin can export the clinic CSV", csv.status === 200);
+  check("the CSV has a header row and this clinic's pets",
+    csvText.includes("Pet code") && csvText.includes("Biscuit"));
+  check("the CSV does not contain another clinic's pets", !csvText.includes("Juno"),
+    "Juno belongs to Northside");
+  check("the CSV is sent as a download",
+    (csv.headers.get("content-disposition") || "").includes(".csv"));
+
+  const vetCsv = await fetch(`${BASE}/clinic/export.csv`, {
+    headers: { Authorization: `Bearer ${vet.token}` }
+  });
+  check("a vet can't export the clinic CSV", vetCsv.status === 403, `got ${vetCsv.status}`);
+
+  const staffStats = await call("GET", "/dashboard/stats", { token: vet.token });
+  check("dashboard stats respond for staff", staffStats.status === 200);
+  check("staff stats include team numbers",
+    typeof staffStats.body?.counts?.vets === "number");
+  check("staff stats count pets and allergies",
+    staffStats.body.counts.pets > 0 && staffStats.body.counts.petsWithAllergies > 0,
+    JSON.stringify(staffStats.body?.counts));
+  check("the activity feed is newest first",
+    staffStats.body.recentVisits.every((v, i, a) =>
+      i === 0 || new Date(a[i - 1].visitDate) >= new Date(v.visitDate)));
+
+  const ownerStats = await call("GET", "/dashboard/stats", { token: owner.token });
+  check("an owner's stats omit team numbers",
+    ownerStats.body?.counts?.vets === undefined);
+  check("an owner's pet count is only their own",
+    ownerStats.body.counts.pets <= staffStats.body.counts.pets);
+
+  const otherStats = await call("GET", "/dashboard/stats", { token: otherAdmin.token });
+  check("another clinic's stats are computed separately",
+    otherStats.body.counts.pets !== staffStats.body.counts.pets ||
+      otherStats.body.recentVisits.every((v) => v.petName !== "Biscuit"));
+
   // ---- 10. Auth -----------------------------------------------------------
   section("10. Authentication");
 
@@ -337,6 +401,11 @@ async function login(email) {
 
   const junk = await call("GET", "/pets", { token: "not-a-real-token" });
   check("a forged token is rejected", junk.status === 401);
+
+  const anonPdf = await fetch(`${BASE}/pets/${biscuit.id}/record.pdf`);
+  check("the PDF endpoint needs a token", anonPdf.status === 401);
+  const anonCsv = await fetch(`${BASE}/clinic/export.csv`);
+  check("the CSV endpoint needs a token", anonCsv.status === 401);
 
   // ---- Cleanup ------------------------------------------------------------
   section("Cleanup");

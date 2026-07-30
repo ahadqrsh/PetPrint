@@ -6,6 +6,7 @@ const { ApiError } = require("../middleware/errorHandler");
 const { clinicFilter, assertSameClinic, stripProtected } = require("../utils/scope");
 const { storeImage, deleteLocalImage } = require("../services/uploadService");
 const { nextListingStatus } = require("../utils/adoptionStatus");
+const email = require("../services/emailService");
 
 const publicBase = (req) => `${req.protocol}://${req.get("host")}`;
 
@@ -236,6 +237,19 @@ async function apply(req, res, next) {
 
     await syncListingStatus(listing);
 
+    // Confirm to the applicant, and let the clinic's staff know there's
+    // something to review.
+    email.applicationReceived({ applicant: req.user, listing });
+    const staff = await User.find(
+      { ...clinicFilter(req.user), role: { $in: ["vet", "admin"] } },
+      "email"
+    ).lean();
+    email.newApplicationForStaff({
+      recipients: staff.map((s) => s.email).filter(Boolean),
+      applicant: req.user,
+      listing
+    });
+
     res.status(201).json({
       application: shapeApplication(application, { listing, applicant: req.user })
     });
@@ -336,15 +350,35 @@ async function decideApplication(req, res, next) {
     await application.save();
 
     if (status === "approved") {
-      await AdoptionApplication.updateMany(
-        { listingId: listing._id, _id: { $ne: application._id }, status: "applied" },
-        { $set: { status: "rejected" } }
-      );
+      // Everyone else waiting on this animal is turned down. They were told an
+      // application was under review, so they get told the outcome too.
+      const alsoWaiting = await AdoptionApplication.find({
+        listingId: listing._id,
+        _id: { $ne: application._id },
+        status: "applied"
+      }).lean();
+
+      if (alsoWaiting.length) {
+        await AdoptionApplication.updateMany(
+          { _id: { $in: alsoWaiting.map((a) => a._id) } },
+          { $set: { status: "rejected" } }
+        );
+
+        const others = await User.find(
+          { _id: { $in: alsoWaiting.map((a) => a.applicantId) } },
+          "name email"
+        ).lean();
+        for (const other of others) {
+          email.applicationDecided({ applicant: other, listing, status: "rejected" });
+        }
+      }
     }
 
     await syncListingStatus(listing);
 
     const applicant = await User.findById(application.applicantId, "name email phone").lean();
+    if (applicant) email.applicationDecided({ applicant, listing, status });
+
     res.json({ application: shapeApplication(application, { listing, applicant }) });
   } catch (err) {
     next(err);

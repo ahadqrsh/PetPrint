@@ -10,10 +10,11 @@
     "seed": "node scripts/seed.js",
     "test": "node --test tests/*.test.js",
     "verify:4": "node scripts/verify-phase4.js",
-    "verify:3": "node scripts/verify-phase3.js",
-    "verify": "node scripts/verify-phase3.js && node scripts/verify-phase4.js"
+    "verify": "node scripts/verify-core.js && node scripts/verify-phase4.js",
+    "verify:core": "node scripts/verify-core.js"
   },
   "dependencies": {
+    "@json2csv/plainjs": "^7.0.7",
     "bcrypt": "^5.1.1",
     "cloudinary": "^2.10.0",
     "cors": "^2.8.5",
@@ -22,6 +23,8 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.5.0",
     "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.10.1",
+    "pdfkit": "^0.15.2",
     "qrcode": "^1.5.4",
     "zod": "^3.23.8"
   },

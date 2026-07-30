@@ -43,7 +43,7 @@ With both servers running, in a third terminal:
 
 ```bash
 cd backend
-npm run verify
+npm run verify:core
 ```
 
 This exercises 45 rules: scoping, pet code generation and normalisation,

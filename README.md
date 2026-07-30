@@ -30,7 +30,13 @@ browse grid for owners, and the apply → approve/reject workflow that drives
 listing status. Approving one application marks the animal adopted and turns
 down everyone else waiting on it. 27 unit tests.
 
-Phases 5–7 (polish, vaccination engine, AI assistant) are not started.
+**Phase 5 — Polish & value-adds ✅**
+`GET /dashboard/stats` as the single source for every dashboard number, a
+printable PDF history per pet (pdfkit), a clinic-wide CSV export for admins
+(json2csv), an editable clinic-details page, and Nodemailer notifications for
+signup, vet accounts, and every step of an adoption application. 34 unit tests.
+
+Phases 6–7 (vaccination engine, AI assistant) are not started.
 
 ## Run it
 
@@ -114,7 +120,31 @@ POST   /api/adoptions/:id/apply     # [owner]
 GET    /api/adoptions/applications  # staff: the clinic's queue; owner: their own
 PUT    /api/adoptions/applications/:id      # [vet, admin] approved | rejected
 DELETE /api/adoptions/applications/:id      # [owner] withdraw an undecided application
+
+GET    /api/dashboard/stats         # every dashboard number, scoped by role
+GET    /api/pets/:id/record.pdf     # printable history (pdfkit)
+GET    /api/clinic/export.csv       # [admin] every pet and visit (json2csv)
 ```
+
+### Exports are authenticated, so downloads go through a blob
+
+Neither `<a href>` nor `<img src>` can carry a bearer token, so
+`lib/download.js` fetches the file with the token, wraps it in a blob, and
+triggers a temporary link. It reads the filename out of `Content-Disposition`,
+and unwraps JSON error bodies (which arrive as blobs when `responseType` is
+`"blob"`) so failures still show a readable message.
+
+### Email never blocks a request
+
+`emailService.queueMail()` is deliberately fire-and-forget: a signup must not
+500 because SMTP is down. With `EMAIL_USER`/`EMAIL_PASS` unset every send
+becomes a `[email:skipped]` console line, so development and CI need no mail
+server. Gmail requires an **App Password**, not the account password.
+
+Notifications sent: welcome (owner and clinic signup), vet account created,
+adoption application received (to the applicant *and* the clinic's staff), and
+application approved or rejected — including the applicants who are turned down
+automatically when someone else is approved.
 
 ### Listing status is derived, never set by hand
 
@@ -197,9 +227,14 @@ Direction is **"petrol & brass"** — the paper patient file, digitised.
   means a pet arriving at a different clinic can't be looked up by tag. If you
   want cross-clinic read with the owner's consent, that's a design decision for
   later, not a bug.
-- **The dashboard counts pets and visits-this-week** via `/api/clinic`. That's
-  a slice of what Phase 5's `/dashboard/stats` will do — fold it in there when
-  you get to it rather than keeping two sources.
+- **`GET /api/clinic` no longer returns counts** — they all moved to
+  `/dashboard/stats` so a number can't disagree with the page it links to.
+  `/clinic` returns clinic details plus team totals only.
+- **`json2csv` is installed as `@json2csv/plainjs`**, its current package name;
+  the old `json2csv` package is deprecated.
+- **CSV exports contain owner contact details and clinical notes.** There's a
+  warning next to the button, but if this handles real patient data you'll want
+  an audit log of who exported what — worth adding before launch.
 - **Signed-in users can no longer reach `/login` or `/register`.** A `GuestOnly`
   guard wraps the auth layout and redirects them to the dashboard, and both auth
   pages now navigate with `replace()` so Back doesn't bounce between the two.
@@ -217,24 +252,29 @@ Direction is **"petrol & brass"** — the paper patient file, digitised.
 ```bash
 npm test              # 27 unit tests, no database needed
 npm run verify        # both API suites end to end (needs the server running)
-npm run verify:3      # Phase 3 only — 45 checks
-npm run verify:4      # Phase 4 only — 44 checks
+npm run verify:core   # pets, records, exports, stats — 65 checks
+npm run verify:4      # adoption — 44 checks
 ```
 
 `PHASE-3-TESTING.md` and `PHASE-4-TESTING.md` add the UI walkthroughs, for the
 things a script can't judge.
 
-## Upgrading from Phase 3
+## Upgrading from Phase 4
 
-**Nothing was deleted this phase.** Extracting over your existing folder is
-safe, though a fresh folder is still the cleaner habit.
+**One file was renamed:** `backend/scripts/verify-phase3.js` is now
+`backend/scripts/verify-core.js` (it grew to cover the Phase 5 exports too).
+If you extract over your existing folder, delete the old one:
 
-Changed: `backend/src/app.js`, `backend/src/controllers/clinicController.js`,
-`backend/scripts/seed.js`, `backend/package.json` (adds `multer` and
-`cloudinary`), `backend/.env.example` (adds `API_PUBLIC_URL`),
-`frontend/components/nav-items.js`, `frontend/components/Sidebar.jsx`,
-`frontend/app/(app)/dashboard/page.js`, `frontend/app/(auth)/layout.js`, and
-both auth pages.
+```powershell
+Remove-Item backend\scripts\verify-phase3.js
+```
 
-After extracting: `npm install` in **both** folders, then `npm run seed` — the
-seed now also creates adoption listings and one pending application.
+Nothing else was deleted. Changed: `backend/src/app.js`,
+`backend/src/controllers/` (auth, vet, clinic, adoption — all now send email),
+`backend/src/routes/` (pet, clinic), `backend/package.json` (adds `pdfkit`,
+`@json2csv/plainjs`, `nodemailer`), `backend/.env.example`,
+`frontend/app/(app)/dashboard/page.js`, `frontend/app/(app)/pets/[id]/page.js`,
+and `frontend/components/nav-items.js`.
+
+After extracting: `npm install` in **both** folders. No re-seed needed, though
+it's harmless.

@@ -10,6 +10,7 @@ const petRoutes = require("./routes/petRoutes");
 const recordRoutes = require("./routes/recordRoutes");
 const searchRoutes = require("./routes/searchRoutes");
 const adoptionRoutes = require("./routes/adoptionRoutes");
+const dashboardRoutes = require("./routes/dashboardRoutes");
 const ownerRoutes = require("./routes/ownerRoutes");
 
 const app = express();
@@ -40,6 +41,7 @@ app.use("/api/pets", petRoutes);        // pets + their record timeline
 app.use("/api/records", recordRoutes);  // edit/delete a single record
 app.use("/api/search", searchRoutes);   // name, owner, or pet code
 app.use("/api/adoptions", adoptionRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

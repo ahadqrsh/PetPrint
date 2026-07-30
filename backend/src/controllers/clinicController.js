@@ -1,11 +1,7 @@
 const Clinic = require("../models/Clinic");
 const User = require("../models/User");
-const Pet = require("../models/Pet");
-const MedicalRecord = require("../models/MedicalRecord");
-const AdoptionListing = require("../models/AdoptionListing");
-const AdoptionApplication = require("../models/AdoptionApplication");
 const { ApiError } = require("../middleware/errorHandler");
-const { clinicFilter, scopedFilter, stripProtected } = require("../utils/scope");
+const { clinicFilter, stripProtected } = require("../utils/scope");
 
 // GET /api/clinics — public, minimal list so owners can pick their clinic at sign-up.
 // Deliberately returns name/type only: no addresses, phones, or counts.
@@ -24,37 +20,10 @@ async function getMyClinic(req, res, next) {
     const clinic = await Clinic.findById(req.user.clinicId).lean();
     if (!clinic) throw new ApiError(404, "Clinic not found.");
 
-    const weekAgo = new Date(Date.now() - 7 * 864e5);
-    const petScope = scopedFilter(req.user);
-
-    // Adoption figures follow the same rule: staff see the clinic's queue,
-    // an owner sees only the applications they sent.
-    const applicationFilter = { ...clinicFilter(req.user), status: "applied" };
-    if (req.user.role === "owner") applicationFilter.applicantId = req.user._id;
-
-    const [admins, vets, owners, pets, visitsThisWeek, adoptable, openApplications] =
-      await Promise.all([
+    const [admins, vets, owners] = await Promise.all([
       User.countDocuments({ ...clinicFilter(req.user), role: "admin" }),
       User.countDocuments({ ...clinicFilter(req.user), role: "vet" }),
-      User.countDocuments({ ...clinicFilter(req.user), role: "owner" }),
-      // Pets and visits follow the caller's scope: an owner counts only their own.
-      Pet.countDocuments(petScope),
-      req.user.role === "owner"
-        ? Pet.find(petScope, "_id").lean().then((own) =>
-            MedicalRecord.countDocuments({
-              petId: { $in: own.map((p) => p._id) },
-              visitDate: { $gte: weekAgo }
-            })
-          )
-        : MedicalRecord.countDocuments({
-            ...clinicFilter(req.user),
-            visitDate: { $gte: weekAgo }
-          }),
-      AdoptionListing.countDocuments({
-        ...clinicFilter(req.user),
-        status: { $in: ["available", "pending"] }
-      }),
-      AdoptionApplication.countDocuments(applicationFilter)
+      User.countDocuments({ ...clinicFilter(req.user), role: "owner" })
     ]);
 
     res.json({
@@ -67,7 +36,6 @@ async function getMyClinic(req, res, next) {
         phone: clinic.phone,
         createdAt: clinic.createdAt
       },
-      counts: { pets, visitsThisWeek, adoptable, openApplications },
       // Owners get the clinic card but not a roster of who else is registered.
       team: req.user.role === "owner" ? null : { admins, vets, owners }
     });

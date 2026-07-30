@@ -5,76 +5,97 @@ import Link from "next/link";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import PageHeader from "@/components/PageHeader";
-import Skeleton from "@/components/ui/Skeleton";
 import SearchBar from "@/components/SearchBar";
+import StatCard from "@/components/StatCard";
+import PetCode from "@/components/PetCode";
+import Skeleton from "@/components/ui/Skeleton";
+import { formatDate, relativeDate } from "@/lib/pets";
 
-// A ledger strip rather than a row of floating stat cards: one sheet, hairline
-// dividers, mono numerals — the summary line at the top of a paper file.
-function LedgerStrip({ counts, team, isStaff, loading }) {
+function LedgerStrip({ counts, isStaff, loading }) {
   const cells = isStaff
     ? [
-        { label: "Pets on file", value: counts?.pets },
+        { label: "Pets on file", value: counts?.pets, href: "/pets" },
         { label: "Visits this week", value: counts?.visitsThisWeek },
-        { label: "Up for adoption", value: counts?.adoptable },
-        { label: "Applications to review", value: counts?.openApplications }
+        { label: "Up for adoption", value: counts?.adoptable, href: "/adoptions" },
+        {
+          label: "To review",
+          value: counts?.openApplications,
+          href: "/adoptions/applications"
+        }
       ]
     : [
-        { label: "My pets", value: counts?.pets },
+        { label: "My pets", value: counts?.pets, href: "/pets" },
         { label: "Visits this week", value: counts?.visitsThisWeek },
-        { label: "Looking for a home", value: counts?.adoptable },
-        { label: "My open applications", value: counts?.openApplications }
+        { label: "Looking for a home", value: counts?.adoptable, href: "/adoptions" },
+        {
+          label: "My applications",
+          value: counts?.openApplications,
+          href: "/adoptions/applications"
+        }
       ];
 
   return (
-    <div
-      className="grid grid-cols-2 divide-line border-t border-line sm:grid-cols-4 sm:divide-x"
-    >
+    <div className="grid grid-cols-2 divide-line border-t border-line sm:grid-cols-4 sm:divide-x">
       {cells.map((cell) => (
-        <div key={cell.label} className="px-5 py-4 sm:px-6">
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
-            {cell.label}
-          </p>
-          {loading ? (
-            <Skeleton className="mt-1.5 h-7 w-10" />
-          ) : (
-            <p className="data mt-0.5 text-[1.6rem] font-medium leading-tight text-ink">
-              {cell.value ?? "\u2014"}
-            </p>
-          )}
-        </div>
+        <StatCard key={cell.label} {...cell} loading={loading} />
       ))}
     </div>
   );
 }
 
-function NextUp({ role }) {
-  const rows =
-    role === "owner"
-      ? [
-          { phase: "Phase 5", text: "Printable PDF summaries of your pet's history" },
-          { phase: "Phase 6", text: "Vaccination reminders when a booster is due" }
-        ]
-      : [
-          { phase: "Phase 5", text: "PDF visit summaries, CSV export, and email notifications" },
-          { phase: "Phase 6", text: "Vaccination scheduling with automatic due dates" },
-          { phase: "Phase 7", text: "AI drafting help for clinical notes (vet-approved)" }
-        ];
-
+function RecentVisits({ visits, loading, isStaff }) {
   return (
-    <div className="mt-6">
+    <div>
       <div className="file-tab">
         <span className="h-1.5 w-1.5 rounded-full bg-brass" />
-        Roadmap
+        Recent activity
       </div>
-      <div className="file-sheet divide-y divide-line">
-        {rows.map((row) => (
-          <div key={row.phase} className="flex gap-4 px-5 py-3.5 sm:px-6">
-            <span className="data w-[62px] shrink-0 pt-0.5 text-[11px] uppercase tracking-[0.12em] text-ink-faint">
-              {row.phase}
-            </span>
-            <span className="text-[14px] text-ink-soft">{row.text}</span>
+      <div className="file-sheet">
+        {loading ? (
+          <div className="divide-y divide-line">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="px-5 py-3.5 sm:px-6">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="mt-1.5 h-3 w-56" />
+              </div>
+            ))}
           </div>
-        ))}
+        ) : visits.length === 0 ? (
+          <p className="px-5 py-8 text-center text-[14px] text-ink-soft sm:px-6">
+            {isStaff
+              ? "No visits recorded yet. They'll show up here as your team writes them."
+              : "No visits recorded for your pets yet."}
+          </p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {visits.map((visit) => (
+              <li key={visit.id}>
+                <Link
+                  href={`/pets/${visit.petId}`}
+                  className="flex items-start justify-between gap-4 px-5 py-3.5 transition-colors hover:bg-paper/60 sm:px-6"
+                >
+                  <span className="min-w-0">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-[14px] font-semibold text-ink">{visit.petName}</span>
+                      {visit.petCode && <PetCode code={visit.petCode} size="sm" />}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[13px] text-ink-soft">
+                      {visit.diagnosis || "No diagnosis recorded"}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="data block text-[12px] text-ink-soft">
+                      {formatDate(visit.visitDate)}
+                    </span>
+                    <span className="block text-[11px] text-ink-faint">
+                      {relativeDate(visit.visitDate)}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
@@ -82,20 +103,20 @@ function NextUp({ role }) {
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const [data, setData] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [clinic, setClinic] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api
-      .get("/clinic")
-      .then((res) => setData(res.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.all([
+      api.get("/dashboard/stats").then((r) => setStats(r.data)).catch(() => {}),
+      api.get("/clinic").then((r) => setClinic(r.data.clinic)).catch(() => {})
+    ]).finally(() => setLoading(false));
   }, []);
 
-  const clinic = data?.clinic;
   const isStaff = user.role !== "owner";
   const firstName = user.name.split(" ")[0];
+  const allergyCount = stats?.counts?.petsWithAllergies;
 
   return (
     <>
@@ -105,123 +126,114 @@ export default function DashboardPage() {
         description={
           isStaff
             ? "Everything here is scoped to your clinic — you only ever see your own records."
-            : "You'll see your own pets and their history here, and nothing belonging to anyone else."
+            : "Your pets, their history, and animals looking for a home at this clinic."
         }
       >
-        <LedgerStrip counts={data?.counts} team={data?.team} isStaff={isStaff} loading={loading} />
+        <LedgerStrip counts={stats?.counts} isStaff={isStaff} loading={loading} />
       </PageHeader>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <div>
-          <div className="file-tab">
-            <span className="h-1.5 w-1.5 rounded-full bg-brass" />
-            {clinic?.type === "ngo" ? "Rescue" : "Clinic"}
-          </div>
-          <div className="file-sheet p-5 sm:p-6">
-            {loading ? (
-              <>
-                <Skeleton className="h-6 w-48" />
-                <Skeleton className="mt-3 h-4 w-full" />
-                <Skeleton className="mt-2 h-4 w-2/3" />
-              </>
-            ) : clinic ? (
-              <>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2>{clinic.name}</h2>
-                  <span
-                    className={
-                      clinic.plan === "paid"
-                        ? "chip border-brass/40 bg-brass-soft text-brass"
-                        : "chip border-line-strong bg-paper text-ink-soft"
-                    }
-                  >
-                    {clinic.plan} plan
-                  </span>
-                </div>
+      <div className="mt-6 grid gap-6 lg:grid-cols-[1.3fr_1fr]">
+        <RecentVisits visits={stats?.recentVisits || []} loading={loading} isStaff={isStaff} />
 
-                <dl className="mt-4 space-y-2.5 border-t border-line pt-4 text-[14px]">
-                  {[
-                    ["Address", clinic.address],
-                    ["Phone", clinic.phone],
-                    [
-                      "On PetPrint since",
-                      clinic.createdAt
-                        ? new Date(clinic.createdAt).toLocaleDateString(undefined, {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric"
-                          })
-                        : null
-                    ]
-                  ].map(([label, value]) => (
-                    <div key={label} className="flex gap-4">
-                      <dt className="w-[150px] shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
-                        {label}
-                      </dt>
-                      <dd className={value ? "text-ink" : "text-ink-faint"}>
-                        {value || "Not set"}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              </>
-            ) : (
-              <p className="text-[14px] text-ink-soft">
-                Your clinic details couldn&apos;t be loaded. Refresh to try again.
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div>
-          <div className="file-tab">
-            <span className="h-1.5 w-1.5 rounded-full bg-brass" />
-            Find a chart
-          </div>
-          <div className="file-sheet p-5 sm:p-6">
-            <p className="text-[14px] text-ink-soft">
-              {isStaff
-                ? "Search by name, owner, or the code on the tag."
-                : "Search your pets by name or code."}
-            </p>
-            <div className="mt-3">
-              <SearchBar
-                placeholder={isStaff ? "e.g. Biscuit, Olive, PET-2026-0001" : "e.g. Biscuit"}
-              />
+        <div className="space-y-6">
+          <div>
+            <div className="file-tab">
+              <span className="h-1.5 w-1.5 rounded-full bg-brass" />
+              Find a chart
             </div>
-            <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
-              <Link
-                href="/pets"
-                className="rounded-md border border-line-strong bg-white px-3 py-1.5 text-[13px] font-semibold text-ink hover:bg-paper"
-              >
-                All pets
-              </Link>
-              <Link
-                href="/pets/new"
-                className="rounded-md bg-jade px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-jade-deep"
-              >
-                Register a pet
-              </Link>
-              <Link
-                href="/adoptions"
-                className="rounded-md border border-line-strong bg-white px-3 py-1.5 text-[13px] font-semibold text-ink hover:bg-paper"
-              >
-                {isStaff ? "Adoption listings" : "Adopt a pet"}
-              </Link>
-              {user.role === "admin" && (
+            <div className="file-sheet p-5">
+              <SearchBar
+                placeholder={isStaff ? "Name, owner, or PET-2026-0001" : "Search your pets"}
+              />
+              <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
                 <Link
-                  href="/admin/vets"
+                  href="/pets"
                   className="rounded-md border border-line-strong bg-white px-3 py-1.5 text-[13px] font-semibold text-ink hover:bg-paper"
                 >
-                  Manage team
+                  {isStaff ? "All pets" : "My pets"}
                 </Link>
+                <Link
+                  href="/pets/new"
+                  className="rounded-md bg-jade px-3 py-1.5 text-[13px] font-semibold text-white hover:bg-jade-deep"
+                >
+                  Register a pet
+                </Link>
+                <Link
+                  href="/adoptions"
+                  className="rounded-md border border-line-strong bg-white px-3 py-1.5 text-[13px] font-semibold text-ink hover:bg-paper"
+                >
+                  {isStaff ? "Adoption" : "Adopt a pet"}
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          {isStaff && allergyCount > 0 && (
+            <div>
+              <div className="file-tab">
+                <span className="h-1.5 w-1.5 rounded-full bg-brass" />
+                Alerts
+              </div>
+              <div className="file-sheet border-t-0 p-5">
+                <div className="rounded-md border border-clay/30 bg-clay-soft px-4 py-3">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-clay-ink">
+                    Allergies on file
+                  </p>
+                  <p className="mt-1 text-[14px] text-clay-ink">
+                    <span className="data font-semibold">{allergyCount}</span>{" "}
+                    {allergyCount === 1 ? "pet has" : "pets have"} a recorded allergy. Their
+                    charts show a warning banner before any treatment detail.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="file-tab">
+              <span className="h-1.5 w-1.5 rounded-full bg-brass" />
+              {clinic?.type === "ngo" ? "Rescue" : "Clinic"}
+            </div>
+            <div className="file-sheet p-5">
+              {loading ? (
+                <>
+                  <Skeleton className="h-5 w-40" />
+                  <Skeleton className="mt-2 h-4 w-full" />
+                </>
+              ) : clinic ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-base">{clinic.name}</h2>
+                    <span
+                      className={
+                        clinic.plan === "paid"
+                          ? "chip border-brass/40 bg-brass-soft text-brass"
+                          : "chip border-line-strong bg-paper text-ink-soft"
+                      }
+                    >
+                      {clinic.plan}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[13px] text-ink-soft">
+                    {[clinic.address, clinic.phone].filter(Boolean).join(" · ") ||
+                      "No contact details recorded"}
+                  </p>
+                  {user.role === "admin" && (
+                    <Link
+                      href="/clinic"
+                      className="mt-3 inline-block text-[13px] font-semibold text-jade underline underline-offset-2"
+                    >
+                      Clinic settings and export
+                    </Link>
+                  )}
+                </>
+              ) : (
+                <p className="text-[14px] text-ink-soft">Clinic details couldn&apos;t be loaded.</p>
               )}
             </div>
           </div>
         </div>
       </div>
-
-      <NextUp role={user.role} />
     </>
   );
 }

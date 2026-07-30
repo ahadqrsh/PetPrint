@@ -5,6 +5,7 @@ const { requireAuth } = require("../middleware/auth");
 const { requireRole } = require("../middleware/rbac");
 const { requireClinic } = require("../middleware/tenant");
 const ctrl = require("../controllers/clinicController");
+const { clinicCsv } = require("../controllers/exportController");
 
 // Mounted twice in app.js: /api/clinics (public list) and /api/clinic (mine).
 const publicRouter = Router();
@@ -16,6 +17,9 @@ const updateSchema = z.object({
   address: z.string().optional(),
   phone: z.string().optional()
 });
+
+// Static path first so "export.csv" isn't read as something else.
+myRouter.get("/export.csv", requireAuth, requireClinic, requireRole("admin"), clinicCsv);
 
 myRouter.get("/", requireAuth, requireClinic, ctrl.getMyClinic);
 myRouter.put("/", requireAuth, requireClinic, requireRole("admin"), validate(updateSchema), ctrl.updateMyClinic);

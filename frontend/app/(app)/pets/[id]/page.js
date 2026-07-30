@@ -294,6 +294,16 @@ export default function PetProfilePage() {
                 ))}
               </dl>
 
+              <DownloadButton
+                path={`/pets/${pet.id}/record.pdf`}
+                filename={`${pet.petCode}-history.pdf`}
+                size="sm"
+                className="mt-4 w-full"
+                busyLabel="Building PDF…"
+              >
+                Print history (PDF)
+              </DownloadButton>
+
               {isAdmin && (
                 <button
                   onClick={() => setDeletingPet(true)}

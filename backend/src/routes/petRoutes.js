@@ -6,6 +6,7 @@ const { requireRole } = require("../middleware/rbac");
 const { requireClinic } = require("../middleware/tenant");
 const pets = require("../controllers/petController");
 const records = require("../controllers/recordController");
+const exports_ = require("../controllers/exportController");
 
 const router = Router();
 router.use(requireAuth, requireClinic);
@@ -56,6 +57,7 @@ router.get("/:id", pets.getPet);
 router.put("/:id", requireRole("vet", "admin"), validate(updatePetSchema), pets.updatePet);
 router.delete("/:id", requireRole("admin"), pets.removePet);
 router.get("/:id/qrcode", pets.getPetQrCode);
+router.get("/:id/record.pdf", exports_.petHistoryPdf);
 
 router.get("/:id/records", records.listRecords);
 router.post("/:id/records", requireRole("vet", "admin"), validate(recordSchema), records.createRecord);
