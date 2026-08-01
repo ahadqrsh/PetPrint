@@ -7,6 +7,10 @@ const { requireClinic } = require("../middleware/tenant");
 const pets = require("../controllers/petController");
 const records = require("../controllers/recordController");
 const exports_ = require("../controllers/exportController");
+const {
+  recordSchema: vaccinationSchema,
+  ctrl: vaccinations
+} = require("./vaccinationRoutes");
 
 const router = Router();
 router.use(requireAuth, requireClinic);
@@ -58,6 +62,14 @@ router.put("/:id", requireRole("vet", "admin"), validate(updatePetSchema), pets.
 router.delete("/:id", requireRole("admin"), pets.removePet);
 router.get("/:id/qrcode", pets.getPetQrCode);
 router.get("/:id/record.pdf", exports_.petHistoryPdf);
+
+router.get("/:id/vaccinations", vaccinations.getPetVaccinations);
+router.post(
+  "/:id/vaccinations",
+  requireRole("vet", "admin"),
+  validate(vaccinationSchema),
+  vaccinations.recordVaccination
+);
 
 router.get("/:id/records", records.listRecords);
 router.post("/:id/records", requireRole("vet", "admin"), validate(recordSchema), records.createRecord);

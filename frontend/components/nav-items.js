@@ -7,7 +7,8 @@ export const NAV_SECTIONS = [
     items: [
       { href: "/dashboard", label: "Overview", roles: ["admin", "vet", "owner"] },
       { href: "/pets", label: "Pets", roles: ["admin", "vet"] },
-      { href: "/pets", label: "My pets", roles: ["owner"] }
+      { href: "/pets", label: "My pets", roles: ["owner"] },
+      { href: "/vaccinations", label: "Vaccinations", roles: ["admin", "vet", "owner"] }
     ]
   },
   {

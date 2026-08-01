@@ -3,6 +3,7 @@ const User = require("../models/User");
 const MedicalRecord = require("../models/MedicalRecord");
 const AdoptionListing = require("../models/AdoptionListing");
 const AdoptionApplication = require("../models/AdoptionApplication");
+const VaccinationRecord = require("../models/VaccinationRecord");
 const { clinicFilter, scopedFilter } = require("../utils/scope");
 
 /**
@@ -30,10 +31,17 @@ async function stats(req, res, next) {
     const applicationFilter = { ...clinic, status: "applied" };
     if (isOwner) applicationFilter.applicantId = req.user._id;
 
+    // Vaccinations follow the same scope as pets: an owner's counts cover only
+    // their own animals.
+    const vaccinationScope = isOwner ? { petId: { $in: ownPetIds } } : clinic;
+    const soon = new Date(Date.now() + 30 * 864e5);
+    const today = new Date();
+
     const [
       pets, visitsThisWeek, petsWithAllergies,
       adoptable, pendingAdoptions, openApplications,
-      vets, owners, recent
+      vets, owners, recent,
+      vaccinationsOverdue, vaccinationsDueSoon
     ] = await Promise.all([
       Pet.countDocuments(petScope),
       MedicalRecord.countDocuments(visitFilter),
@@ -46,7 +54,15 @@ async function stats(req, res, next) {
       MedicalRecord.find(isOwner ? { petId: { $in: ownPetIds } } : clinic)
         .sort({ visitDate: -1, createdAt: -1 })
         .limit(5)
-        .lean()
+        .lean(),
+      VaccinationRecord.countDocuments({
+        ...vaccinationScope,
+        nextDueDate: { $ne: null, $lt: today }
+      }),
+      VaccinationRecord.countDocuments({
+        ...vaccinationScope,
+        nextDueDate: { $ne: null, $gte: today, $lte: soon }
+      })
     ]);
 
     // Hydrate the activity feed with pet and vet names.
@@ -70,6 +86,9 @@ async function stats(req, res, next) {
         adoptable,
         pendingAdoptions,
         openApplications,
+        vaccinationsOverdue,
+        vaccinationsDueSoon,
+        vaccinationsDue: vaccinationsOverdue + vaccinationsDueSoon,
         ...(isOwner ? {} : { vets, owners })
       },
       recentVisits: recent.map((r) => {

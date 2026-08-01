@@ -11,6 +11,10 @@ const recordRoutes = require("./routes/recordRoutes");
 const searchRoutes = require("./routes/searchRoutes");
 const adoptionRoutes = require("./routes/adoptionRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
+const {
+  catalogueRouter: vaccineCatalogue,
+  recordsRouter: vaccinationRecords
+} = require("./routes/vaccinationRoutes");
 const ownerRoutes = require("./routes/ownerRoutes");
 
 const app = express();
@@ -42,6 +46,8 @@ app.use("/api/records", recordRoutes);  // edit/delete a single record
 app.use("/api/search", searchRoutes);   // name, owner, or pet code
 app.use("/api/adoptions", adoptionRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/vaccines", vaccineCatalogue);        // the schedule catalogue
+app.use("/api/vaccinations", vaccinationRecords);  // due list + corrections
 
 app.use(notFound);
 app.use(errorHandler);

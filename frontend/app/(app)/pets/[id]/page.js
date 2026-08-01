@@ -18,6 +18,7 @@ import { TextInput, ErrorNote } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
 import { describePet, formatDate } from "@/lib/pets";
 import DownloadButton from "@/components/DownloadButton";
+import VaccinationPanel from "@/components/VaccinationPanel";
 
 function Textarea({ label, hint, value, onChange, rows = 3, ...props }) {
   return (
@@ -204,8 +205,8 @@ export default function PetProfilePage() {
 
   return (
     <>
-      <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
-        <div className="min-w-0">
+      <div className="grid gap-6 lg:grid-cols-[1fr_280px] lg:items-start">
+        <div className="min-w-0 lg:col-start-1 lg:row-start-1">
           <div className="file-tab">
             <span className="h-1.5 w-1.5 rounded-full bg-brass" />
             Chart
@@ -271,7 +272,11 @@ export default function PetProfilePage() {
           </div>
         </div>
 
-        <aside className="space-y-6">
+        <div className="min-w-0 lg:col-start-1">
+          <VaccinationPanel petId={pet.id} />
+        </div>
+
+        <aside className="space-y-6 lg:col-start-2 lg:row-start-1">
           <QrPanel petId={pet.id} petCode={pet.petCode} petName={pet.name} />
 
           <div>

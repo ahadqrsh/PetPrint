@@ -15,7 +15,16 @@ function LedgerStrip({ counts, isStaff, loading }) {
   const cells = isStaff
     ? [
         { label: "Pets on file", value: counts?.pets, href: "/pets" },
-        { label: "Visits this week", value: counts?.visitsThisWeek },
+        {
+          label: "Vaccinations due",
+          value: counts?.vaccinationsDue,
+          href: "/vaccinations",
+          tone: counts?.vaccinationsOverdue > 0 ? "warning" : undefined,
+          note:
+            counts?.vaccinationsOverdue > 0
+              ? `${counts.vaccinationsOverdue} overdue`
+              : undefined
+        },
         { label: "Up for adoption", value: counts?.adoptable, href: "/adoptions" },
         {
           label: "To review",
@@ -25,7 +34,16 @@ function LedgerStrip({ counts, isStaff, loading }) {
       ]
     : [
         { label: "My pets", value: counts?.pets, href: "/pets" },
-        { label: "Visits this week", value: counts?.visitsThisWeek },
+        {
+          label: "Vaccinations due",
+          value: counts?.vaccinationsDue,
+          href: "/vaccinations",
+          tone: counts?.vaccinationsOverdue > 0 ? "warning" : undefined,
+          note:
+            counts?.vaccinationsOverdue > 0
+              ? `${counts.vaccinationsOverdue} overdue`
+              : undefined
+        },
         { label: "Looking for a home", value: counts?.adoptable, href: "/adoptions" },
         {
           label: "My applications",
