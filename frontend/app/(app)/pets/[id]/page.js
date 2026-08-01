@@ -17,6 +17,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import { TextInput, ErrorNote } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
 import { describePet, formatDate } from "@/lib/pets";
+import DownloadButton from "@/components/DownloadButton";
 
 function Textarea({ label, hint, value, onChange, rows = 3, ...props }) {
   return (

@@ -57,7 +57,13 @@ cd frontend
 cp .env.local.example .env.local
 npm install
 npm run dev                 # http://localhost:3000
+npm run check               # catches components used without being imported
 ```
+
+`npm run check` exists because `next build` does **not** catch an undefined
+component on a dynamic route: an undefined identifier is valid JavaScript, and
+a route marked `ƒ` is never executed at build time, so the error only surfaces
+when someone opens the page. Run it after editing any page.
 
 ### Seed logins (password `password123`)
 

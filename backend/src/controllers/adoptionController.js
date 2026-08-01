@@ -6,7 +6,7 @@ const { ApiError } = require("../middleware/errorHandler");
 const { clinicFilter, assertSameClinic, stripProtected } = require("../utils/scope");
 const { storeImage, deleteLocalImage } = require("../services/uploadService");
 const { nextListingStatus } = require("../utils/adoptionStatus");
-const email = require("../services/emailService");
+const notify = require("../services/emailService");
 
 const publicBase = (req) => `${req.protocol}://${req.get("host")}`;
 
@@ -239,12 +239,12 @@ async function apply(req, res, next) {
 
     // Confirm to the applicant, and let the clinic's staff know there's
     // something to review.
-    email.applicationReceived({ applicant: req.user, listing });
+    notify.applicationReceived({ applicant: req.user, listing });
     const staff = await User.find(
       { ...clinicFilter(req.user), role: { $in: ["vet", "admin"] } },
       "email"
     ).lean();
-    email.newApplicationForStaff({
+    notify.newApplicationForStaff({
       recipients: staff.map((s) => s.email).filter(Boolean),
       applicant: req.user,
       listing
@@ -369,7 +369,7 @@ async function decideApplication(req, res, next) {
           "name email"
         ).lean();
         for (const other of others) {
-          email.applicationDecided({ applicant: other, listing, status: "rejected" });
+          notify.applicationDecided({ applicant: other, listing, status: "rejected" });
         }
       }
     }
@@ -377,7 +377,7 @@ async function decideApplication(req, res, next) {
     await syncListingStatus(listing);
 
     const applicant = await User.findById(application.applicantId, "name email phone").lean();
-    if (applicant) email.applicationDecided({ applicant, listing, status });
+    if (applicant) notify.applicationDecided({ applicant, listing, status });
 
     res.json({ application: shapeApplication(application, { listing, applicant }) });
   } catch (err) {
