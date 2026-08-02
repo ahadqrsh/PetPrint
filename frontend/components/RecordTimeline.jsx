@@ -1,6 +1,7 @@
 "use client";
 
 import { formatDate, relativeDate } from "@/lib/pets";
+import AiBadge from "./AiBadge";
 
 function Line({ label, value }) {
   if (!value) return null;
@@ -14,7 +15,9 @@ function Line({ label, value }) {
 
 // Newest first. The rule down the left is the spine of the chart; each visit
 // is a stop on it, dated in mono because a date is data.
-export default function RecordTimeline({ records, canEdit, canDelete, onEdit, onDelete }) {
+export default function RecordTimeline({
+  records, canEdit, canDelete, onEdit, onDelete, onOwnerSummary, isOwner
+}) {
   return (
     <ol className="relative px-5 py-5 sm:px-6">
       <span
@@ -46,6 +49,7 @@ export default function RecordTimeline({ records, canEdit, canDelete, onEdit, on
             {i === 0 && (
               <span className="chip border-jade/30 bg-jade/10 text-jade">Latest</span>
             )}
+            {record.aiAssisted && <AiBadge />}
           </div>
 
           <div className="mt-2 rounded-lg border border-line bg-paper/50 p-4">
@@ -58,14 +62,40 @@ export default function RecordTimeline({ records, canEdit, canDelete, onEdit, on
               <p className="text-[13px] text-ink-faint">No detail recorded for this visit.</p>
             )}
 
+            {/* A released summary. Owners only ever receive approved text —
+                the server withholds drafts entirely. */}
+            {record.ownerSummary && record.ownerSummaryApproved && (
+              <div className="mt-3 rounded-md border border-jade/25 bg-jade/5 p-3">
+                <p className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-jade-deep">
+                  {isOwner ? "What this means" : "Shared with the owner"}
+                  {record.ownerSummaryAiAssisted && !isOwner && <AiBadge />}
+                </p>
+                <p className="mt-1 whitespace-pre-line text-[13px] leading-relaxed text-ink">
+                  {record.ownerSummary}
+                </p>
+              </div>
+            )}
+
             {(canEdit || canDelete) && (
-              <div className="mt-3 flex gap-3 border-t border-line pt-2.5">
+              <div className="mt-3 flex flex-wrap gap-3 border-t border-line pt-2.5">
                 {canEdit && (
                   <button
                     onClick={() => onEdit(record)}
                     className="text-[12px] font-semibold text-jade underline underline-offset-2"
                   >
                     Edit
+                  </button>
+                )}
+                {onOwnerSummary && (
+                  <button
+                    onClick={() => onOwnerSummary(record)}
+                    className="text-[12px] font-semibold text-jade underline underline-offset-2"
+                  >
+                    {record.ownerSummaryApproved
+                      ? "Owner summary"
+                      : record.ownerSummary
+                        ? "Owner summary (draft)"
+                        : "Write owner summary"}
                   </button>
                 )}
                 {canDelete && (

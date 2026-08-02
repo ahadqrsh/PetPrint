@@ -5,8 +5,8 @@ const { ApiError } = require("../middleware/errorHandler");
 const { assertSameClinic, stripProtected } = require("../utils/scope");
 const { loadPet } = require("./petController");
 
-function shape(record, vet) {
-  return {
+function shape(record, vet, { forOwner = false } = {}) {
+  const base = {
     id: record._id,
     petId: record.petId,
     visitDate: record.visitDate,
@@ -15,7 +15,28 @@ function shape(record, vet) {
     treatment: record.treatment,
     notes: record.notes,
     createdAt: record.createdAt,
+    aiAssisted: Boolean(record.aiAssisted),
     vet: vet ? { id: vet._id, name: vet.name } : null
+  };
+
+  // An owner only ever sees a summary a vet has released. Unapproved drafts
+  // are not sent to the client at all — hiding them in the UI would still put
+  // them on the wire.
+  if (forOwner) {
+    return {
+      ...base,
+      ownerSummary: record.ownerSummaryApproved ? record.ownerSummary : "",
+      ownerSummaryApproved: Boolean(record.ownerSummaryApproved),
+      ownerSummaryAiAssisted: Boolean(record.ownerSummaryAiAssisted)
+    };
+  }
+
+  return {
+    ...base,
+    ownerSummary: record.ownerSummary || "",
+    ownerSummaryApproved: Boolean(record.ownerSummaryApproved),
+    ownerSummaryAiAssisted: Boolean(record.ownerSummaryAiAssisted),
+    ownerSummaryApprovedAt: record.ownerSummaryApprovedAt || null
   };
 }
 
@@ -32,9 +53,10 @@ async function listRecords(req, res, next) {
     const vets = await User.find({ _id: { $in: records.map((r) => r.vetId) } }, "name").lean();
     const byId = new Map(vets.map((v) => [String(v._id), v]));
 
+    const forOwner = req.user.role === "owner";
     res.json({
       pet: { id: pet._id, name: pet.name, petCode: pet.petCode },
-      records: records.map((r) => shape(r, byId.get(String(r.vetId))))
+      records: records.map((r) => shape(r, byId.get(String(r.vetId)), { forOwner }))
     });
   } catch (err) {
     next(err);
@@ -55,7 +77,11 @@ async function createRecord(req, res, next) {
       symptoms: body.symptoms || "",
       diagnosis: body.diagnosis || "",
       treatment: body.treatment || "",
-      notes: body.notes || ""
+      notes: body.notes || "",
+      // Set by the client when a draft contributed to this record. Saving is
+      // the vet's sign-off, so the author is the approver.
+      aiAssisted: Boolean(body.aiAssisted),
+      aiApprovedByVetId: body.aiAssisted ? req.user._id : null
     });
 
     res.status(201).json({ record: shape(record, req.user) });
@@ -74,6 +100,12 @@ async function updateRecord(req, res, next) {
     const body = stripProtected(req.body);
     for (const field of ["visitDate", "symptoms", "diagnosis", "treatment", "notes"]) {
       if (body[field] !== undefined) record[field] = body[field];
+    }
+    if (body.aiAssisted !== undefined) {
+      record.aiAssisted = Boolean(body.aiAssisted);
+      if (record.aiAssisted && !record.aiApprovedByVetId) {
+        record.aiApprovedByVetId = req.user._id;
+      }
     }
 
     await record.save();

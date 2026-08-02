@@ -10,12 +10,13 @@
     "seed": "node scripts/seed.js",
     "test": "node --test tests/*.test.js",
     "verify:4": "node scripts/verify-phase4.js",
-    "verify": "node scripts/verify-core.js && node scripts/verify-phase4.js && node scripts/verify-phase6.js",
+    "verify": "node scripts/verify-core.js && node scripts/verify-phase4.js && node scripts/verify-phase6.js && node scripts/verify-phase7.js",
     "verify:core": "node scripts/verify-core.js",
     "lint": "eslint src scripts tests",
     "seed:vaccines": "node scripts/seed-vaccines.js",
     "reminders": "node scripts/reminder-scan.js",
-    "verify:6": "node scripts/verify-phase6.js"
+    "verify:6": "node scripts/verify-phase6.js",
+    "verify:7": "node scripts/verify-phase7.js"
   },
   "dependencies": {
     "@json2csv/plainjs": "^7.0.7",

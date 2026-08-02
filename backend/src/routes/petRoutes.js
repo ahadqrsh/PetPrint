@@ -11,6 +11,7 @@ const {
   recordSchema: vaccinationSchema,
   ctrl: vaccinations
 } = require("./vaccinationRoutes");
+const { attachPetAiRoutes } = require("./aiRoutes");
 
 const router = Router();
 router.use(requireAuth, requireClinic);
@@ -49,7 +50,8 @@ const recordSchema = z.object({
   symptoms: z.string().optional(),
   diagnosis: z.string().optional(),
   treatment: z.string().optional(),
-  notes: z.string().optional()
+  notes: z.string().optional(),
+  aiAssisted: z.boolean().optional()
 });
 
 // Static segment first so "code" is never read as an id.
@@ -73,5 +75,7 @@ router.post(
 
 router.get("/:id/records", records.listRecords);
 router.post("/:id/records", requireRole("vet", "admin"), validate(recordSchema), records.createRecord);
+
+attachPetAiRoutes(router);
 
 module.exports = router;

@@ -11,6 +11,7 @@ const recordRoutes = require("./routes/recordRoutes");
 const searchRoutes = require("./routes/searchRoutes");
 const adoptionRoutes = require("./routes/adoptionRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
+const { statusRouter: aiStatusRouter } = require("./routes/aiRoutes");
 const {
   catalogueRouter: vaccineCatalogue,
   recordsRouter: vaccinationRecords
@@ -46,6 +47,7 @@ app.use("/api/records", recordRoutes);  // edit/delete a single record
 app.use("/api/search", searchRoutes);   // name, owner, or pet code
 app.use("/api/adoptions", adoptionRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/ai", aiStatusRouter);                 // is the assistant configured?
 app.use("/api/vaccines", vaccineCatalogue);        // the schedule catalogue
 app.use("/api/vaccinations", vaccinationRecords);  // due list + corrections
 

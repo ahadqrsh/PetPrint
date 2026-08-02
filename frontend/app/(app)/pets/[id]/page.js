@@ -19,6 +19,9 @@ import { useToast } from "@/components/ui/Toast";
 import { describePet, formatDate } from "@/lib/pets";
 import DownloadButton from "@/components/DownloadButton";
 import VaccinationPanel from "@/components/VaccinationPanel";
+import AiDraftPanel from "@/components/AiDraftPanel";
+import AiBadge from "@/components/AiBadge";
+import { OwnerSummaryModal } from "@/components/OwnerSummaryPanel";
 
 function Textarea({ label, hint, value, onChange, rows = 3, ...props }) {
   return (
@@ -43,17 +46,24 @@ const EMPTY_VISIT = {
   symptoms: "", diagnosis: "", treatment: "", notes: ""
 };
 
-function VisitForm({ initial, onSubmit, onCancel, submitLabel }) {
+function VisitForm({ initial, onSubmit, onCancel, submitLabel, petId, aiAvailable }) {
   const [form, setForm] = useState(initial);
+  const [aiAssisted, setAiAssisted] = useState(Boolean(initial.aiAssisted));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // A draft fills the fields; it is never saved on the vet's behalf.
+  function applyDraft(draft) {
+    setForm((f) => ({ ...f, ...draft }));
+    setAiAssisted(true);
+  }
 
   async function submit(e) {
     e.preventDefault();
     setError("");
     setBusy(true);
     try {
-      await onSubmit(form);
+      await onSubmit({ ...form, aiAssisted });
     } catch (err) {
       setError(apiError(err));
       setBusy(false);
@@ -67,6 +77,18 @@ function VisitForm({ initial, onSubmit, onCancel, submitLabel }) {
         max={new Date().toISOString().slice(0, 10)}
         onChange={(e) => setForm({ ...form, visitDate: e.target.value })}
       />
+
+      {aiAvailable && petId && (
+        <AiDraftPanel petId={petId} onDraft={applyDraft} disabled={busy} />
+      )}
+
+      {aiAssisted && (
+        <p className="mt-3 rounded-md border border-line-strong bg-paper px-3 py-2 text-[12px] leading-relaxed text-ink-soft">
+          <span className="font-semibold text-ink">Check every field before saving.</span>{" "}
+          A draft from the assistant contributed to this record. Saving it is your
+          clinical sign-off, and the record will be marked AI-assisted.
+        </p>
+      )}
       <Textarea
         label="Symptoms" hint="What was presented" value={form.symptoms}
         onChange={(e) => setForm({ ...form, symptoms: e.target.value })}
@@ -113,6 +135,8 @@ export default function PetProfilePage() {
   const [deleting, setDeleting] = useState(null);
   const [deletingPet, setDeletingPet] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [aiAvailable, setAiAvailable] = useState(false);
+  const [summaryFor, setSummaryFor] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -132,6 +156,12 @@ export default function PetProfilePage() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // The assistant is optional — hide it entirely when the server has no key.
+  useEffect(() => {
+    if (!canWrite) return;
+    api.get("/ai/status").then((r) => setAiAvailable(r.data.available)).catch(() => {});
+  }, [canWrite]);
 
   async function addVisit(form) {
     await api.post(`/pets/${id}/records`, form);
@@ -256,6 +286,8 @@ export default function PetProfilePage() {
                 records={records}
                 canEdit={canWrite}
                 canDelete={isAdmin}
+                isOwner={user.role === "owner"}
+                onOwnerSummary={canWrite ? setSummaryFor : undefined}
                 onEdit={(r) =>
                   setEditing({
                     id: r.id,
@@ -263,7 +295,8 @@ export default function PetProfilePage() {
                     symptoms: r.symptoms || "",
                     diagnosis: r.diagnosis || "",
                     treatment: r.treatment || "",
-                    notes: r.notes || ""
+                    notes: r.notes || "",
+                    aiAssisted: r.aiAssisted
                   })
                 }
                 onDelete={setDeleting}
@@ -334,6 +367,8 @@ export default function PetProfilePage() {
           onSubmit={addVisit}
           onCancel={() => setAdding(false)}
           submitLabel="Add visit"
+          petId={pet.id}
+          aiAvailable={aiAvailable}
         />
       </Modal>
 
@@ -349,9 +384,19 @@ export default function PetProfilePage() {
             onSubmit={saveVisit}
             onCancel={() => setEditing(null)}
             submitLabel="Save changes"
+            petId={pet.id}
+            aiAvailable={aiAvailable}
           />
         )}
       </Modal>
+
+      <OwnerSummaryModal
+        open={Boolean(summaryFor)}
+        record={summaryFor}
+        aiAvailable={aiAvailable}
+        onClose={() => setSummaryFor(null)}
+        onSaved={load}
+      />
 
       <ConfirmDialog
         open={Boolean(deleting)}
