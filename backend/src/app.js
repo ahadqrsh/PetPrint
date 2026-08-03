@@ -20,9 +20,30 @@ const ownerRoutes = require("./routes/ownerRoutes");
 
 const app = express();
 
+/**
+ * CLIENT_ORIGIN accepts a comma-separated list, because Vercel gives every
+ * preview deployment its own URL and a single origin would block them all.
+ *   CLIENT_ORIGIN=https://petprint.vercel.app,http://localhost:3000
+ */
+const ALLOWED_ORIGINS = (process.env.CLIENT_ORIGIN || "http://localhost:3000")
+  .split(",")
+  .map((o) => o.trim().replace(/\/$/, ""))
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: process.env.CLIENT_ORIGIN || "http://localhost:3000",
+    origin(origin, callback) {
+      // No origin: curl, health checks, server-to-server. Allow.
+      if (!origin) return callback(null, true);
+      const clean = origin.replace(/\/$/, "");
+      if (ALLOWED_ORIGINS.includes(clean)) return callback(null, true);
+      // Vercel preview builds: <project>-<hash>-<scope>.vercel.app
+      if (process.env.ALLOW_VERCEL_PREVIEWS === "true" && /\.vercel\.app$/.test(clean)) {
+        return callback(null, true);
+      }
+      console.warn(`[cors] blocked origin: ${origin}`);
+      return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true
   })
 );
