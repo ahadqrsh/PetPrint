@@ -51,10 +51,13 @@ async function resolveOwnerId(req, requestedOwnerId) {
 // GET /api/pets
 async function listPets(req, res, next) {
   try {
-    const { species, q } = req.query;
+    const { species, q, hasAllergies } = req.query;
     const filter = scopedFilter(req.user);
     if (species === "cat" || species === "dog") filter.species = species;
     if (q) filter.name = { $regex: String(q).trim(), $options: "i" };
+    // Lets the dashboard's allergy count link somewhere useful instead of
+    // being a number you can't act on.
+    if (hasAllergies === "true") filter["allergies.0"] = { $exists: true };
 
     const pets = await Pet.find(filter).sort({ name: 1 }).limit(200).lean();
     const owners = await User.find({

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import api, { apiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -18,11 +19,16 @@ const FILTERS = [
   { id: "cat", label: "Cats" }
 ];
 
-export default function PetsPage() {
+function PetsList() {
   const { user } = useAuth();
   const isStaff = user.role !== "owner";
 
   const [pets, setPets] = useState([]);
+  const searchParams = useSearchParams();
+  // Driven by the dashboard's allergy alert: /pets?hasAllergies=true
+  const [allergyOnly, setAllergyOnly] = useState(
+    searchParams.get("hasAllergies") === "true"
+  );
   const [species, setSpecies] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -31,7 +37,9 @@ export default function PetsPage() {
     setLoading(true);
     setError("");
     try {
-      const params = species === "all" ? {} : { species };
+      const params = {};
+      if (species !== "all") params.species = species;
+      if (allergyOnly) params.hasAllergies = "true";
       const res = await api.get("/pets", { params });
       setPets(res.data.pets);
     } catch (err) {
@@ -39,7 +47,7 @@ export default function PetsPage() {
     } finally {
       setLoading(false);
     }
-  }, [species]);
+  }, [species, allergyOnly]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -62,7 +70,16 @@ export default function PetsPage() {
             }
           />
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
+          {allergyOnly && (
+            <button
+              onClick={() => setAllergyOnly(false)}
+              className="rounded-md border border-clay/40 bg-clay-soft px-3 py-1.5 text-[13px] font-semibold text-clay-ink transition-colors hover:border-clay"
+              title="Show all pets again"
+            >
+              With allergies ×
+            </button>
+          )}
           {FILTERS.map((f) => (
             <button
               key={f.id}
@@ -98,7 +115,13 @@ export default function PetsPage() {
       ) : pets.length === 0 ? (
         <div className="border-t border-line">
           <EmptyState
-            title={species === "all" ? "No pets on file yet" : `No ${species}s on file`}
+            title={
+              allergyOnly
+                ? "No pets with recorded allergies"
+                : species === "all"
+                  ? "No pets on file yet"
+                  : `No ${species}s on file`
+            }
             body={
               species === "all"
                 ? "Register a pet to start its chart. Every visit you record after that lands on the same timeline."
@@ -151,5 +174,17 @@ export default function PetsPage() {
         </>
       )}
     </PageHeader>
+  );
+}
+
+/**
+ * useSearchParams needs a Suspense boundary on a prerendered route, otherwise
+ * Next bails out of static rendering for the whole page.
+ */
+export default function PetsPage() {
+  return (
+    <Suspense fallback={null}>
+      <PetsList />
+    </Suspense>
   );
 }

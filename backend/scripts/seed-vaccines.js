@@ -75,6 +75,17 @@ const CATALOGUE = [
     notes: "Booster interval varies by jurisdiction."
   },
   {
+    name: "Chlamydia felis",
+    species: "cat",
+    isCore: false,
+    doseSchedule: [
+      { sequence: 1, minAgeWeeks: 9, intervalFromPrevDays: 0 },
+      { sequence: 2, minAgeWeeks: 12, intervalFromPrevDays: 21 }
+    ],
+    boosterIntervalDays: 365,
+    notes: "Conjunctivitis. Mainly for multi-cat households and shelters."
+  },
+  {
     name: "FeLV",
     species: "cat",
     isCore: false,

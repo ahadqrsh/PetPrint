@@ -193,16 +193,22 @@ export default function DashboardPage() {
                 Alerts
               </div>
               <div className="file-sheet border-t-0 p-5">
-                <div className="rounded-md border border-clay/30 bg-clay-soft px-4 py-3">
+                <Link
+                  href="/pets?hasAllergies=true"
+                  className="block rounded-md border border-clay/30 bg-clay-soft px-4 py-3 transition-colors hover:border-clay/60"
+                >
                   <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-clay-ink">
                     Allergies on file
                   </p>
                   <p className="mt-1 text-[14px] text-clay-ink">
                     <span className="data font-semibold">{allergyCount}</span>{" "}
-                    {allergyCount === 1 ? "pet has" : "pets have"} a recorded allergy. Their
-                    charts show a warning banner before any treatment detail.
+                    {allergyCount === 1 ? "pet has" : "pets have"} a recorded allergy.
+                    Their charts warn before any treatment detail.
                   </p>
-                </div>
+                  <p className="mt-1.5 text-[12px] font-semibold text-clay-ink underline underline-offset-2">
+                    See which {allergyCount === 1 ? "pet" : "pets"}
+                  </p>
+                </Link>
               </div>
             </div>
           )}
