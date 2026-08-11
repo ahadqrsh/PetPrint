@@ -1,48 +1,56 @@
-const bcrypt = require("bcrypt");
-const mongoose = require("mongoose");
 const User = require("../models/User");
 const Clinic = require("../models/Clinic");
-const { ApiError } = require("../middleware/errorHandler");
+const bcrypt = require("bcryptjs");
 const { signAccessToken } = require("../utils/tokens");
+const { generateToken, hashToken } = require("../utils/secureToken");
+const { ApiError } = require("../middleware/errorHandler");
+const { stripProtected } = require("../utils/scope");
 const notify = require("../services/emailService");
+const loginGuard = require("../services/loginGuard");
 
-const SALT_ROUNDS = 10;
+const RESET_TOKEN_HOURS = 1;
+const VERIFY_TOKEN_HOURS = 24;
 
-// POST /api/auth/register-clinic
-// Bootstraps a tenant: creates the Clinic and its first admin in one step.
+// The frontend origin to build email links against. Falls back to the first
+// entry of CLIENT_ORIGIN (which may be a comma-separated list) so this works
+// even if APP_URL is never set explicitly.
+function appUrl() {
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+  const first = (process.env.CLIENT_ORIGIN || "http://localhost:3000").split(",")[0].trim();
+  return first.replace(/\/$/, "");
+}
+
+async function issueVerification(user) {
+  const { raw, hash } = generateToken();
+  user.emailVerifyTokenHash = hash;
+  user.emailVerifyExpires = new Date(Date.now() + VERIFY_TOKEN_HOURS * 3600000);
+  await user.save();
+  return raw;
+}
+
+// POST /api/auth/register-clinic — bootstraps a new clinic + its first admin
 async function registerClinic(req, res, next) {
   try {
-    const { clinic, admin } = req.body;
-
-    const existing = await User.findOne({ email: admin.email });
-    if (existing) throw new ApiError(409, "That email is already in use.");
-
+    const body = stripProtected(req.body);
     const clinicDoc = await Clinic.create({
-      name: clinic.name,
-      type: clinic.type,
-      address: clinic.address || "",
-      phone: clinic.phone || ""
+      name: body.clinicName,
+      type: body.clinicType === "ngo" ? "ngo" : "private",
+      address: body.address || "",
+      phone: body.phone || ""
     });
 
-    let adminDoc;
-    try {
-      adminDoc = await User.create({
-        name: admin.name,
-        email: admin.email,
-        passwordHash: await bcrypt.hash(admin.password, SALT_ROUNDS),
-        role: "admin",
-        clinicId: clinicDoc._id,
-        phone: admin.phone || ""
-      });
-    } catch (err) {
-      // Don't leave an orphan tenant if the admin insert lost a race.
-      await Clinic.deleteOne({ _id: clinicDoc._id });
-      throw err;
-    }
+    const passwordHash = await bcrypt.hash(body.password, 10);
+    const adminDoc = await User.create({
+      name: body.name,
+      email: body.email,
+      passwordHash,
+      role: "admin",
+      clinicId: clinicDoc._id
+    });
 
-    // Fire-and-forget: a failing mail server must not fail a signup.
+    const rawToken = await issueVerification(adminDoc);
     notify.welcomeClinic({ user: adminDoc, clinic: clinicDoc });
-    notify.welcomeClinic({ user: adminDoc, clinic: clinicDoc });
+    notify.sendVerificationEmail({ user: adminDoc, rawToken, appUrl: appUrl() });
 
     res.status(201).json({
       token: signAccessToken(adminDoc),
@@ -54,33 +62,30 @@ async function registerClinic(req, res, next) {
   }
 }
 
-// POST /api/auth/register  — owner self-registration into an existing clinic
+// POST /api/auth/register — a pet owner joining an existing clinic
 async function register(req, res, next) {
   try {
-    const { name, email, password, phone, clinicId } = req.body;
+    const body = stripProtected(req.body);
+    const clinic = await Clinic.findById(body.clinicId);
+    if (!clinic) throw new ApiError(400, "Choose a clinic to register with.");
 
-    if (!mongoose.isValidObjectId(clinicId)) {
-      throw new ApiError(400, "Please choose a valid clinic.");
-    }
-    const clinic = await Clinic.findById(clinicId);
-    if (!clinic) throw new ApiError(400, "That clinic doesn't exist.");
-
-    const existing = await User.findOne({ email });
-    if (existing) throw new ApiError(409, "That email is already in use.");
-
+    const passwordHash = await bcrypt.hash(body.password, 10);
     const user = await User.create({
-      name,
-      email,
-      passwordHash: await bcrypt.hash(password, SALT_ROUNDS),
-      role: "owner", // self-registration is owner-only; vets are created by admins
+      name: body.name,
+      email: body.email,
+      passwordHash,
+      role: "owner",
       clinicId: clinic._id,
-      phone: phone || ""
+      phone: body.phone || ""
     });
 
+    const rawToken = await issueVerification(user);
     notify.welcomeOwner({ user, clinic });
+    notify.sendVerificationEmail({ user, rawToken, appUrl: appUrl() });
 
     res.status(201).json({ token: signAccessToken(user), user: user.toSafeJSON() });
   } catch (err) {
+    if (err.code === 11000) return next(new ApiError(409, "An account with that email already exists at this clinic."));
     next(err);
   }
 }
@@ -89,10 +94,48 @@ async function register(req, res, next) {
 async function login(req, res, next) {
   try {
     const { email, password } = req.body;
+    // Same generic message on every failure path (no account, wrong password,
+    // deactivated) so a login attempt can't be used to discover which emails
+    // have accounts.
+    const invalid = () => new ApiError(401, "Incorrect email or password.");
 
-    const user = await User.findOne({ email }).select("+passwordHash");
-    const ok = user && (await bcrypt.compare(password, user.passwordHash));
-    if (!ok) throw new ApiError(401, "Email or password is incorrect.");
+    const user = await User.findOne({ email: String(email).toLowerCase().trim() })
+      .select("+resetTokenHash +resetTokenExpires");
+    if (!user) throw invalid();
+
+    if (loginGuard.isLocked(user)) {
+      const mins = loginGuard.minutesRemaining(user);
+      throw new ApiError(
+        423,
+        `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`
+      );
+    }
+
+    const correct = await user.checkPassword(password);
+    if (!correct) {
+      Object.assign(user, loginGuard.recordFailedAttempt(user));
+      await user.save();
+
+      // Tell them now if this was the attempt that triggered the lock —
+      // otherwise the account is already locked but the response still reads
+      // "incorrect password," and the person only discovers the lockout on
+      // whatever attempt comes next (even with the right password).
+      if (loginGuard.isLocked(user)) {
+        const mins = loginGuard.minutesRemaining(user);
+        throw new ApiError(
+          423,
+          `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`
+        );
+      }
+      throw invalid();
+    }
+
+    if (!user.isActive) {
+      throw new ApiError(403, "This account has been deactivated. Contact your clinic administrator.");
+    }
+
+    Object.assign(user, loginGuard.clearAttempts());
+    await user.save();
 
     res.json({ token: signAccessToken(user), user: user.toSafeJSON() });
   } catch (err) {
@@ -105,4 +148,110 @@ async function me(req, res) {
   res.json({ user: req.user.toSafeJSON() });
 }
 
-module.exports = { registerClinic, register, login, me };
+// ---- Password reset --------------------------------------------------------
+
+// POST /api/auth/forgot-password
+async function forgotPassword(req, res, next) {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email: String(email || "").toLowerCase().trim() });
+
+    // Always the same response whether or not the account exists — the
+    // alternative (a different message for "no such email") lets an attacker
+    // enumerate which addresses have accounts on this system.
+    const genericResponse = {
+      message: "If an account exists for that email, a reset link has been sent."
+    };
+
+    if (!user) return res.json(genericResponse);
+
+    const { raw, hash } = generateToken();
+    user.resetTokenHash = hash;
+    user.resetTokenExpires = new Date(Date.now() + RESET_TOKEN_HOURS * 3600000);
+    await user.save();
+
+    notify.sendPasswordResetEmail({ user, rawToken: raw, appUrl: appUrl() });
+
+    res.json(genericResponse);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/auth/reset-password
+async function resetPassword(req, res, next) {
+  try {
+    const { token, password } = req.body;
+    const hash = hashToken(String(token || ""));
+
+    const user = await User.findOne({
+      resetTokenHash: hash,
+      resetTokenExpires: { $gt: new Date() }
+    }).select("+resetTokenHash +resetTokenExpires");
+
+    if (!user) {
+      throw new ApiError(400, "This reset link is invalid or has expired. Request a new one.");
+    }
+
+    user.passwordHash = await bcrypt.hash(password, 10);
+    user.resetTokenHash = null;
+    user.resetTokenExpires = null;
+    // A password reset is a legitimate proof of inbox access — clear any
+    // lockout too, rather than leaving someone locked out of the account
+    // they just proved they own.
+    Object.assign(user, loginGuard.clearAttempts());
+    await user.save();
+
+    res.json({ token: signAccessToken(user), user: user.toSafeJSON() });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ---- Email verification -----------------------------------------------
+
+// POST /api/auth/verify-email
+async function verifyEmail(req, res, next) {
+  try {
+    const { token } = req.body;
+    const hash = hashToken(String(token || ""));
+
+    const user = await User.findOne({
+      emailVerifyTokenHash: hash,
+      emailVerifyExpires: { $gt: new Date() }
+    }).select("+emailVerifyTokenHash +emailVerifyExpires");
+
+    if (!user) {
+      throw new ApiError(400, "This verification link is invalid or has expired.");
+    }
+
+    user.emailVerified = true;
+    user.emailVerifyTokenHash = null;
+    user.emailVerifyExpires = null;
+    await user.save();
+
+    res.json({ verified: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /api/auth/resend-verification — [authenticated]
+async function resendVerification(req, res, next) {
+  try {
+    if (req.user.emailVerified) {
+      throw new ApiError(400, "This email is already verified.");
+    }
+    const rawToken = await issueVerification(req.user);
+    notify.sendVerificationEmail({ user: req.user, rawToken, appUrl: appUrl() });
+    res.json({ sent: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = {
+  registerClinic, register, login, me,
+  forgotPassword, resetPassword,
+  verifyEmail, resendVerification
+};

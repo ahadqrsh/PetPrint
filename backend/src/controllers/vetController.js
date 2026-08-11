@@ -1,112 +1,84 @@
-const bcrypt = require("bcrypt");
-const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
 const User = require("../models/User");
+const Clinic = require("../models/Clinic");
 const { ApiError } = require("../middleware/errorHandler");
 const { clinicFilter, assertSameClinic, stripProtected } = require("../utils/scope");
-const Clinic = require("../models/Clinic");
 const notify = require("../services/emailService");
 
-const SALT_ROUNDS = 10;
-
-// Loads a vet by id *within the caller's clinic*.
-// Cross-tenant ids fall through to 404 via assertSameClinic.
-async function findVetInClinic(req, id) {
-  if (!mongoose.isValidObjectId(id)) throw new ApiError(404, "Vet not found.");
-  const vet = await User.findById(id);
-  assertSameClinic(req.user, vet, "Vet");
-  if (vet.role !== "vet") {
-    // Admins and owners are managed elsewhere; this endpoint only touches vets.
-    throw new ApiError(404, "Vet not found.");
-  }
-  return vet;
+function shape(vet) {
+  return { ...vet.toSafeJSON() };
 }
 
-// GET /api/vets  [admin]
+// GET /api/vets — [admin]
 async function listVets(req, res, next) {
   try {
-    const vets = await User.find({ ...clinicFilter(req.user), role: "vet" })
-      .sort({ name: 1 })
-      .lean();
-
-    res.json({
-      vets: vets.map((v) => ({
-        id: v._id,
-        name: v.name,
-        email: v.email,
-        phone: v.phone,
-        role: v.role,
-        createdAt: v.createdAt
-      }))
-    });
+    const vets = await User.find({ ...clinicFilter(req.user), role: "vet" }).sort({ name: 1 });
+    res.json({ vets: vets.map(shape) });
   } catch (err) {
     next(err);
   }
 }
 
-// POST /api/vets  [admin] — clinicId and role come from the session, never the body
+// POST /api/vets — [admin]
 async function createVet(req, res, next) {
   try {
     const { name, email, password, phone } = stripProtected(req.body);
-
-    const existing = await User.findOne({ email });
-    if (existing) throw new ApiError(409, "That email is already in use.");
+    const passwordHash = await bcrypt.hash(password, 10);
 
     const vet = await User.create({
-      name,
-      email,
-      passwordHash: await bcrypt.hash(password, SALT_ROUNDS),
-      role: "vet",
-      clinicId: req.user.clinicId,
-      phone: phone || ""
+      name, email, phone: phone || "", passwordHash, role: "vet", clinicId: req.user.clinicId
     });
 
     const clinic = await Clinic.findById(req.user.clinicId).lean();
-    if (clinic) notify.vetAccountCreated({ vet, clinic, temporaryPassword: true });
+    if (clinic) notify.vetAccountCreated({ vet, clinic });
 
-    res.status(201).json({ vet: vet.toSafeJSON() });
+    res.status(201).json({ vet: shape(vet) });
   } catch (err) {
+    if (err.code === 11000) return next(new ApiError(409, "A vet with that email already exists here."));
     next(err);
   }
 }
 
-// PUT /api/vets/:id  [admin]
-async function updateVet(req, res, next) {
+/**
+ * PATCH /api/vets/:id/deactivate — [admin]
+ *
+ * Replaces a hard delete. A deactivated vet can no longer sign in, but every
+ * medical record and vaccination they authored keeps a valid "seen by" author
+ * forever — a hard delete would either orphan those references or cascade-
+ * delete clinical history, both worse than a toggle.
+ */
+async function deactivateVet(req, res, next) {
   try {
-    const vet = await findVetInClinic(req, req.params.id);
-    const { name, email, phone, password } = stripProtected(req.body);
+    const vet = await User.findOne({ _id: req.params.id, role: "vet" });
+    assertSameClinic(req.user, vet, "Vet");
 
-    if (email && email !== vet.email) {
-      const taken = await User.findOne({ email });
-      if (taken) throw new ApiError(409, "That email is already in use.");
-      vet.email = email;
-    }
-    if (name !== undefined) vet.name = name;
-    if (phone !== undefined) vet.phone = phone;
-    if (password) vet.passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-
+    vet.isActive = false;
     await vet.save();
-    res.json({ vet: vet.toSafeJSON() });
+
+    res.json({ vet: shape(vet) });
   } catch (err) {
     next(err);
   }
 }
 
-// DELETE /api/vets/:id  [admin]
-async function removeVet(req, res, next) {
+// PATCH /api/vets/:id/activate — [admin]
+async function activateVet(req, res, next) {
   try {
-    const vet = await findVetInClinic(req, req.params.id);
+    const vet = await User.findOne({ _id: req.params.id, role: "vet" });
+    assertSameClinic(req.user, vet, "Vet");
 
-    if (String(vet._id) === String(req.user._id)) {
-      throw new ApiError(400, "You can't remove your own account.");
-    }
+    vet.isActive = true;
+    // A fresh start, not a loophole: reactivating clears any lockout so the
+    // vet isn't reinstated into an account still counting down a 15-minute
+    // lock from before they were deactivated.
+    vet.failedLoginAttempts = 0;
+    vet.lockUntil = null;
+    await vet.save();
 
-    // Phase 3 note: once MedicalRecord exists, refuse deletion when the vet has
-    // signed records and offer deactivation instead, so history stays intact.
-    await User.deleteOne({ _id: vet._id });
-    res.json({ ok: true, id: vet._id });
+    res.json({ vet: shape(vet) });
   } catch (err) {
     next(err);
   }
 }
 
-module.exports = { listVets, createVet, updateVet, removeVet };
+module.exports = { listVets, createVet, deactivateVet, activateVet };
