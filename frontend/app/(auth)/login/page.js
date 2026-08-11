@@ -53,6 +53,14 @@ export default function LoginPage() {
           value={form.password}
           onChange={(e) => setForm({ ...form, password: e.target.value })}
         />
+        <div className="mt-1.5 text-right">
+  <Link
+    href="/forgot-password"
+    className="text-[13px] font-semibold text-jade underline underline-offset-2"
+  >
+    Forgot password?
+  </Link>
+</div>
         <ErrorNote>{error}</ErrorNote>
         <Button full className="mt-5" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
