@@ -96,6 +96,48 @@ function vetAccountCreated({ vet, clinic, temporaryPassword }) {
     html: shell(heading, creds)
   });
 }
+function sendPasswordResetEmail({ user, rawToken, appUrl }) {
+  const link = `${appUrl}/reset-password/${rawToken}`;
+  const heading = "Reset your password";
+  const body = `
+    <p>We received a request to reset the password for your PetPrint account.
+    This link expires in 1 hour and can only be used once.</p>
+    <p style="margin:20px 0">
+      <a href="${link}" style="background:#1a6b58;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">
+        Reset password
+      </a>
+    </p>
+    <p style="font-size:12px;color:#8a9a94">
+      If you didn't request this, you can ignore this email — your password
+      won't change unless you open the link above and choose a new one.
+    </p>`;
+  queueMail({
+    to: user.email,
+    subject: "Reset your PetPrint password",
+    text: `Reset your password: ${link} (expires in 1 hour)`,
+    html: shell(heading, body)
+  });
+}
+
+function sendVerificationEmail({ user, rawToken, appUrl }) {
+  const link = `${appUrl}/verify-email/${rawToken}`;
+  const heading = "Confirm your email";
+  const body = `
+    <p>Click below to confirm ${user.email} is yours. This isn't required to
+    use PetPrint, but it's what lets a password reset reach you if you ever
+    need one.</p>
+    <p style="margin:20px 0">
+      <a href="${link}" style="background:#1a6b58;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">
+        Confirm email
+      </a>
+    </p>`;
+  queueMail({
+    to: user.email,
+    subject: "Confirm your PetPrint email",
+    text: `Confirm your email: ${link}`,
+    html: shell(heading, body)
+  });
+}
 
 function applicationReceived({ applicant, listing }) {
   const heading = `We've got your application for ${listing.name}`;
@@ -146,5 +188,7 @@ module.exports = {
   vetAccountCreated,
   applicationReceived,
   applicationDecided,
-  newApplicationForStaff
+  newApplicationForStaff,
+  sendPasswordResetEmail,
+  sendVerificationEmail
 };
