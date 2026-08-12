@@ -11,9 +11,6 @@ const loginGuard = require("../services/loginGuard");
 const RESET_TOKEN_HOURS = 1;
 const VERIFY_TOKEN_HOURS = 24;
 
-// The frontend origin to build email links against. Falls back to the first
-// entry of CLIENT_ORIGIN (which may be a comma-separated list) so this works
-// even if APP_URL is never set explicitly.
 function appUrl() {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
   const first = (process.env.CLIENT_ORIGIN || "http://localhost:3000").split(",")[0].trim();
@@ -62,11 +59,22 @@ async function registerClinic(req, res, next) {
   }
 }
 
-// POST /api/auth/register — a pet owner joining an existing clinic
+// POST /api/auth/register — a pet owner joining an EXISTING clinic
 async function register(req, res, next) {
   try {
+    // clinicId is read directly from the raw body, deliberately BEFORE
+    // stripProtected(). This is the one endpoint in the app where clinicId is
+    // legitimately a client-supplied field: registration happens before any
+    // session exists, so there is no authenticated user to derive it from —
+    // it's the clinic the person picked from the public dropdown. Every OTHER
+    // endpoint in the app must keep stripping it (a logged-in client must
+    // never be able to set their own clinicId), so stripProtected() itself is
+    // unchanged — it's still applied to the rest of the body below, just not
+    // relied on for this one field.
+    const { clinicId } = req.body;
     const body = stripProtected(req.body);
-    const clinic = await Clinic.findById(body.clinicId);
+
+    const clinic = await Clinic.findById(clinicId);
     if (!clinic) throw new ApiError(400, "Choose a clinic to register with.");
 
     const passwordHash = await bcrypt.hash(body.password, 10);
@@ -94,9 +102,6 @@ async function register(req, res, next) {
 async function login(req, res, next) {
   try {
     const { email, password } = req.body;
-    // Same generic message on every failure path (no account, wrong password,
-    // deactivated) so a login attempt can't be used to discover which emails
-    // have accounts.
     const invalid = () => new ApiError(401, "Incorrect email or password.");
 
     const user = await User.findOne({ email: String(email).toLowerCase().trim() })
@@ -105,27 +110,16 @@ async function login(req, res, next) {
 
     if (loginGuard.isLocked(user)) {
       const mins = loginGuard.minutesRemaining(user);
-      throw new ApiError(
-        423,
-        `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`
-      );
+      throw new ApiError(423, `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`);
     }
 
     const correct = await user.checkPassword(password);
     if (!correct) {
       Object.assign(user, loginGuard.recordFailedAttempt(user));
       await user.save();
-
-      // Tell them now if this was the attempt that triggered the lock —
-      // otherwise the account is already locked but the response still reads
-      // "incorrect password," and the person only discovers the lockout on
-      // whatever attempt comes next (even with the right password).
       if (loginGuard.isLocked(user)) {
         const mins = loginGuard.minutesRemaining(user);
-        throw new ApiError(
-          423,
-          `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`
-        );
+        throw new ApiError(423, `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`);
       }
       throw invalid();
     }
@@ -143,27 +137,22 @@ async function login(req, res, next) {
   }
 }
 
-// GET /api/auth/me
 async function me(req, res) {
   res.json({ user: req.user.toSafeJSON() });
 }
 
 // ---- Password reset --------------------------------------------------------
 
-// POST /api/auth/forgot-password
 async function forgotPassword(req, res, next) {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email: String(email || "").toLowerCase().trim() });
+    const genericResponse = { message: "If an account exists for that email, a reset link has been sent." };
 
-    // Always the same response whether or not the account exists — the
-    // alternative (a different message for "no such email") lets an attacker
-    // enumerate which addresses have accounts on this system.
-    const genericResponse = {
-      message: "If an account exists for that email, a reset link has been sent."
-    };
-
-    if (!user) return res.json(genericResponse);
+    if (!user) {
+      console.log(`[auth] password reset requested for unregistered email: ${email}`);
+      return res.json(genericResponse);
+    }
 
     const { raw, hash } = generateToken();
     user.resetTokenHash = hash;
@@ -178,7 +167,6 @@ async function forgotPassword(req, res, next) {
   }
 }
 
-// POST /api/auth/reset-password
 async function resetPassword(req, res, next) {
   try {
     const { token, password } = req.body;
@@ -189,16 +177,11 @@ async function resetPassword(req, res, next) {
       resetTokenExpires: { $gt: new Date() }
     }).select("+resetTokenHash +resetTokenExpires");
 
-    if (!user) {
-      throw new ApiError(400, "This reset link is invalid or has expired. Request a new one.");
-    }
+    if (!user) throw new ApiError(400, "This reset link is invalid or has expired. Request a new one.");
 
     user.passwordHash = await bcrypt.hash(password, 10);
     user.resetTokenHash = null;
     user.resetTokenExpires = null;
-    // A password reset is a legitimate proof of inbox access — clear any
-    // lockout too, rather than leaving someone locked out of the account
-    // they just proved they own.
     Object.assign(user, loginGuard.clearAttempts());
     await user.save();
 
@@ -210,7 +193,6 @@ async function resetPassword(req, res, next) {
 
 // ---- Email verification -----------------------------------------------
 
-// POST /api/auth/verify-email
 async function verifyEmail(req, res, next) {
   try {
     const { token } = req.body;
@@ -221,9 +203,7 @@ async function verifyEmail(req, res, next) {
       emailVerifyExpires: { $gt: new Date() }
     }).select("+emailVerifyTokenHash +emailVerifyExpires");
 
-    if (!user) {
-      throw new ApiError(400, "This verification link is invalid or has expired.");
-    }
+    if (!user) throw new ApiError(400, "This verification link is invalid or has expired.");
 
     user.emailVerified = true;
     user.emailVerifyTokenHash = null;
@@ -236,12 +216,9 @@ async function verifyEmail(req, res, next) {
   }
 }
 
-// POST /api/auth/resend-verification — [authenticated]
 async function resendVerification(req, res, next) {
   try {
-    if (req.user.emailVerified) {
-      throw new ApiError(400, "This email is already verified.");
-    }
+    if (req.user.emailVerified) throw new ApiError(400, "This email is already verified.");
     const rawToken = await issueVerification(req.user);
     notify.sendVerificationEmail({ user: req.user, rawToken, appUrl: appUrl() });
     res.json({ sent: true });
