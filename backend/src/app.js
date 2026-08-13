@@ -71,6 +71,8 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/ai", aiStatusRouter);                 // is the assistant configured?
 app.use("/api/vaccines", vaccineCatalogue);        // the schedule catalogue
 app.use("/api/vaccinations", vaccinationRecords);  // due list + corrections
+app.use("/api/audit-log", require("./routes/auditRoutes"));
+app.use("/api/trash", require("./routes/trashRoutes"));
 
 app.use(notFound);
 app.use(errorHandler);
