@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { applySoftDelete } = require("../utils/softDelete");
 
 const petSchema = new mongoose.Schema(
   {
@@ -27,4 +28,6 @@ const petSchema = new mongoose.Schema(
 petSchema.index({ clinicId: 1, name: 1 });
 petSchema.index({ clinicId: 1, ownerId: 1 });
 
+applySoftDelete(petSchema);
 module.exports = mongoose.model("Pet", petSchema);
+

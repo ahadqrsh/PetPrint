@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { applySoftDelete } = require("../utils/softDelete");
 
 const medicalRecordSchema = new mongoose.Schema(
   {
@@ -39,4 +40,5 @@ const medicalRecordSchema = new mongoose.Schema(
 // The timeline query: one pet's visits, newest first.
 medicalRecordSchema.index({ petId: 1, visitDate: -1 });
 
+applySoftDelete(medicalRecordSchema);
 module.exports = mongoose.model("MedicalRecord", medicalRecordSchema);
