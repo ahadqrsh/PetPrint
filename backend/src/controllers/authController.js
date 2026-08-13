@@ -7,6 +7,7 @@ const { ApiError } = require("../middleware/errorHandler");
 const { stripProtected } = require("../utils/scope");
 const notify = require("../services/emailService");
 const loginGuard = require("../services/loginGuard");
+const { logAudit } = require("../services/auditLog");
 
 const RESET_TOKEN_HOURS = 1;
 const VERIFY_TOKEN_HOURS = 24;
@@ -110,6 +111,7 @@ async function login(req, res, next) {
 
     if (loginGuard.isLocked(user)) {
       const mins = loginGuard.minutesRemaining(user);
+      logAudit(user, "login.locked", { email: user.email }, req);
       throw new ApiError(423, `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`);
     }
 
@@ -119,8 +121,10 @@ async function login(req, res, next) {
       await user.save();
       if (loginGuard.isLocked(user)) {
         const mins = loginGuard.minutesRemaining(user);
+        logAudit(user, "login.locked", { email: user.email }, req);
         throw new ApiError(423, `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`);
       }
+      logAudit(user, "login.failed", { email: user.email }, req);
       throw invalid();
     }
 
@@ -130,6 +134,7 @@ async function login(req, res, next) {
 
     Object.assign(user, loginGuard.clearAttempts());
     await user.save();
+    logAudit(user, "login.success", {}, req);
 
     res.json({ token: signAccessToken(user), user: user.toSafeJSON() });
   } catch (err) {
@@ -160,6 +165,7 @@ async function forgotPassword(req, res, next) {
     await user.save();
 
     notify.sendPasswordResetEmail({ user, rawToken: raw, appUrl: appUrl() });
+    logAudit(user, "password.reset_requested", {}, req);
 
     res.json(genericResponse);
   } catch (err) {
@@ -184,6 +190,7 @@ async function resetPassword(req, res, next) {
     user.resetTokenExpires = null;
     Object.assign(user, loginGuard.clearAttempts());
     await user.save();
+    logAudit(user, "password.reset_completed", {}, req);
 
     res.json({ token: signAccessToken(user), user: user.toSafeJSON() });
   } catch (err) {

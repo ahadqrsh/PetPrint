@@ -4,12 +4,12 @@ const Clinic = require("../models/Clinic");
 const { ApiError } = require("../middleware/errorHandler");
 const { clinicFilter, assertSameClinic, stripProtected } = require("../utils/scope");
 const notify = require("../services/emailService");
+const { logAudit } = require("../services/auditLog");
 
 function shape(vet) {
   return { ...vet.toSafeJSON() };
 }
 
-// GET /api/vets — [admin]
 async function listVets(req, res, next) {
   try {
     const vets = await User.find({ ...clinicFilter(req.user), role: "vet" }).sort({ name: 1 });
@@ -19,7 +19,6 @@ async function listVets(req, res, next) {
   }
 }
 
-// POST /api/vets — [admin]
 async function createVet(req, res, next) {
   try {
     const { name, email, password, phone } = stripProtected(req.body);
@@ -39,14 +38,6 @@ async function createVet(req, res, next) {
   }
 }
 
-/**
- * PATCH /api/vets/:id/deactivate — [admin]
- *
- * Replaces a hard delete. A deactivated vet can no longer sign in, but every
- * medical record and vaccination they authored keeps a valid "seen by" author
- * forever — a hard delete would either orphan those references or cascade-
- * delete clinical history, both worse than a toggle.
- */
 async function deactivateVet(req, res, next) {
   try {
     const vet = await User.findOne({ _id: req.params.id, role: "vet" });
@@ -54,6 +45,7 @@ async function deactivateVet(req, res, next) {
 
     vet.isActive = false;
     await vet.save();
+    logAudit(req.user, "vet.deactivated", { vetId: vet._id, vetName: vet.name }, req);
 
     res.json({ vet: shape(vet) });
   } catch (err) {
@@ -61,19 +53,16 @@ async function deactivateVet(req, res, next) {
   }
 }
 
-// PATCH /api/vets/:id/activate — [admin]
 async function activateVet(req, res, next) {
   try {
     const vet = await User.findOne({ _id: req.params.id, role: "vet" });
     assertSameClinic(req.user, vet, "Vet");
 
     vet.isActive = true;
-    // A fresh start, not a loophole: reactivating clears any lockout so the
-    // vet isn't reinstated into an account still counting down a 15-minute
-    // lock from before they were deactivated.
     vet.failedLoginAttempts = 0;
     vet.lockUntil = null;
     await vet.save();
+    logAudit(req.user, "vet.activated", { vetId: vet._id, vetName: vet.name }, req);
 
     res.json({ vet: shape(vet) });
   } catch (err) {
