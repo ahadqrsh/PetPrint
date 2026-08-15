@@ -24,7 +24,9 @@ export const NAV_SECTIONS = [
     label: "Clinic",
     items: [
       { href: "/admin/vets", label: "Team", roles: ["admin"] },
-      { href: "/clinic", label: "Clinic details", roles: ["admin"] }
+      { href: "/clinic", label: "Clinic details", roles: ["admin"] },
+      { href: "/audit-log", label: "Activity log", roles: ["admin"] },
+      { href: "/trash", label: "Trash", roles: ["admin"] }
     ]
   }
 ];
