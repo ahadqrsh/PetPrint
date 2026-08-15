@@ -124,6 +124,7 @@ export default function PetProfilePage() {
 
   const canWrite = user.role === "vet" || user.role === "admin";
   const isAdmin = user.role === "admin";
+  const canDeletePet = user.role === "vet" || user.role === "admin";
 
   const [pet, setPet] = useState(null);
   const [records, setRecords] = useState([]);
@@ -343,7 +344,7 @@ export default function PetProfilePage() {
                 Print history (PDF)
               </DownloadButton>
 
-              {isAdmin && (
+              {canDeletePet && (
                 <button
                   onClick={() => setDeletingPet(true)}
                   className="mt-4 border-t border-line pt-3 text-[12px] font-semibold text-ink-faint underline underline-offset-2 hover:text-clay-ink"
@@ -414,7 +415,7 @@ export default function PetProfilePage() {
         onConfirm={confirmDeletePet}
         busy={busy}
         title={`Delete ${pet.name}'s chart?`}
-        body={`This removes the pet and all ${records.length} recorded ${records.length === 1 ? "visit" : "visits"}. It can't be undone.`}
+        body={`This removes the pet and all ${records.length} recorded ${records.length === 1 ? "visit" : "visits"} from view. An admin can restore it from Trash if this was a mistake.`}
         confirmLabel="Delete chart"
       />
     </>

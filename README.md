@@ -106,7 +106,7 @@ GET    /api/pets/:id
 GET    /api/pets/code/:petCode      # QR scan target
 POST   /api/pets                    # staff register for any owner; owners for themselves
 PUT    /api/pets/:id                # [vet, admin]
-DELETE /api/pets/:id                # [admin] — also deletes the pet's records
+DELETE /api/pets/:id                # [vet, admin] — soft-deletes the pet + its records, recoverable from Trash
 GET    /api/pets/:id/qrcode         # { petCode, scanUrl, dataUrl }
 
 GET    /api/pets/:id/records        # the history timeline, newest first

@@ -6,6 +6,7 @@ const { ApiError } = require("../middleware/errorHandler");
 const { scopedFilter, assertSameClinic, stripProtected } = require("../utils/scope");
 const { generatePetCode, normalisePetCode } = require("../utils/generatePetCode");
 const { qrDataUrlFor, scanUrlFor } = require("../services/qrService");
+const { logAudit } = require("../services/auditLog");
 
 function shape(pet, owner) {
   return {
@@ -150,14 +151,19 @@ async function updatePet(req, res, next) {
   }
 }
 
-// DELETE /api/pets/:id — [admin]. Takes the history with it.
+// DELETE /api/pets/:id — [vet, admin]. Soft-deletes the pet and its medical
+// records together — recoverable from Trash, not a hard delete.
 async function removePet(req, res, next) {
   try {
     const pet = await Pet.findById(req.params.id);
     assertSameClinic(req.user, pet, "Pet");
 
-    await MedicalRecord.deleteMany({ petId: pet._id });
-    await Pet.deleteOne({ _id: pet._id });
+    await MedicalRecord.updateMany(
+      { petId: pet._id, deletedAt: null },
+      { $set: { deletedAt: new Date() } }
+    );
+    await pet.softDelete();
+    logAudit(req.user, "pet.deleted", { petId: pet._id, petName: pet.name }, req);
 
     res.json({ ok: true, id: pet._id });
   } catch (err) {

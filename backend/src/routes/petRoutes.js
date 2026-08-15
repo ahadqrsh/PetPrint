@@ -61,7 +61,7 @@ router.get("/", pets.listPets);
 router.post("/", validate(createPetSchema), pets.createPet);
 router.get("/:id", pets.getPet);
 router.put("/:id", requireRole("vet", "admin"), validate(updatePetSchema), pets.updatePet);
-router.delete("/:id", requireRole("admin"), pets.removePet);
+router.delete("/:id", requireRole("vet", "admin"), pets.removePet);
 router.get("/:id/qrcode", pets.getPetQrCode);
 router.get("/:id/record.pdf", exports_.petHistoryPdf);
 

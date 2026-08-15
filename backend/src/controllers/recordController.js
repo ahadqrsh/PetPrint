@@ -4,6 +4,7 @@ const User = require("../models/User");
 const { ApiError } = require("../middleware/errorHandler");
 const { assertSameClinic, stripProtected } = require("../utils/scope");
 const { loadPet } = require("./petController");
+const { logAudit } = require("../services/auditLog");
 
 function shape(record, vet, { forOwner = false } = {}) {
   const base = {
@@ -116,14 +117,16 @@ async function updateRecord(req, res, next) {
   }
 }
 
-// DELETE /api/records/:id — [admin]
+// DELETE /api/records/:id — [admin]. Soft-deletes — recoverable from Trash.
 async function removeRecord(req, res, next) {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) throw new ApiError(404, "Record not found.");
     const record = await MedicalRecord.findById(req.params.id);
     assertSameClinic(req.user, record, "Record");
 
-    await MedicalRecord.deleteOne({ _id: record._id });
+    await record.softDelete();
+    logAudit(req.user, "record.deleted", { recordId: record._id, petId: record.petId }, req);
+
     res.json({ ok: true, id: record._id });
   } catch (err) {
     next(err);
